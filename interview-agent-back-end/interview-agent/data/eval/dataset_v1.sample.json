@@ -1,0 +1,42 @@
+[
+  {
+    "id": "eval_001",
+    "query": "Go goroutine 调度模型 GMP",
+    "relevant_doc_ids": ["eval_go_005"],
+    "topic": "Go 并发",
+    "difficulty": "easy",
+    "note": "明确指向 GMP 调度模型；ID 需替换为 manifest 中的实际 ID"
+  },
+  {
+    "id": "eval_002",
+    "query": "Go channel 底层实现 hchan 缓冲区原理",
+    "relevant_doc_ids": ["eval_go_010"],
+    "topic": "Go 并发",
+    "difficulty": "medium",
+    "note": "考察 channel 底层结构（hchan/buf/sendq/recvq）；ID 需替换为 manifest 中的实际 ID"
+  },
+  {
+    "id": "eval_003",
+    "query": "MySQL InnoDB 索引 B+树 聚簇索引 非聚簇索引区别",
+    "relevant_doc_ids": ["eval_mysql_008"],
+    "topic": "MySQL",
+    "difficulty": "medium",
+    "note": "考察 InnoDB B+树索引结构和聚簇/非聚簇区别；ID 需替换为 manifest 中的实际 ID"
+  },
+  {
+    "id": "eval_004",
+    "query": "MySQL 事务 ACID 原理 MVCC 实现",
+    "relevant_doc_ids": ["eval_mysql_010"],
+    "topic": "MySQL",
+    "difficulty": "medium",
+    "note": "考察事务 ACID 和 MVCC 实现；ID 需替换为 manifest 中的实际 ID"
+  },
+  {
+    "id": "eval_005",
+    "query": "Redis 持久化 RDB AOF 区别",
+    "relevant_doc_ids": ["eval_redis_003"],
+    "topic": "Redis",
+    "difficulty": "medium",
+    "note": "考察 Redis 持久化机制；ID 需替换为 manifest 中的实际 ID"
+  }
+]

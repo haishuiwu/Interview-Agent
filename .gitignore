@@ -1,0 +1,107 @@
+# Operating-system metadata
+.DS_Store
+._*
+__MACOSX/
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE and editor-local state
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.direnv/
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Logs, diagnostics, and temporary files
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.pid
+*.dmp
+core
+core.*
+.cache/
+
+# Python caches, environments, and build outputs
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
+build/
+dist/
+
+# Node.js dependencies, caches, and build outputs
+node_modules/
+.vite/
+.eslintcache
+*.tsbuildinfo
+coverage/
+.npm/
+npm-cache/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Go build, test, coverage, and profiling outputs
+bin/
+*.exe
+*.exe~
+*.test
+*.out
+*.prof
+*.pprof
+*.trace
+coverage.txt
+coverage.html
+
+# Tool-generated browser traces and page snapshots
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# Timestamped local RAG evaluation outputs; keep curated baselines explicitly
+**/data/eval/reports/eval_report_*.json
+**/data/eval/reports/eval_report_*.md
