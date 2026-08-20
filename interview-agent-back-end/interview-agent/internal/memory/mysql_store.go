@@ -14,6 +14,8 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+
+	imodel "interview-agent/internal/model"
 )
 
 // MySQLStore 基于 MySQL 的持久化存储（用户画像 + 面试历史）
@@ -157,13 +159,35 @@ func (s *MySQLStore) LoadProfile(ctx context.Context, userID string) (*UserProfi
 
 	for rows.Next() {
 		var rec InterviewRecord
-		if err := rows.Scan(&rec.SessionID, &rec.Position, &rec.OverallScore, &rec.Date); err != nil {
+		if err := rows.Scan(&rec.SessionID, &rec.LearningGoal, &rec.OverallScore, &rec.Date); err != nil {
 			continue
 		}
 		profile.InterviewHist = append(profile.InterviewHist, rec)
 	}
 
 	return &profile, nil
+}
+
+// SaveAbilityProfile 使用既有 sessions 数据载体保存完整能力画像，不新增数据库字段。
+func (s *MySQLStore) SaveAbilityProfile(ctx context.Context, profile *imodel.StudentAbilityProfile) error {
+	data, err := json.Marshal(profile)
+	if err != nil {
+		return fmt.Errorf("mysql: marshal ability profile: %w", err)
+	}
+	return s.SaveSession(ctx, abilityProfileKey(profile.StudentID), data, 0)
+}
+
+// LoadAbilityProfile 从既有 sessions 数据载体读取完整能力画像。
+func (s *MySQLStore) LoadAbilityProfile(ctx context.Context, studentID string) (*imodel.StudentAbilityProfile, error) {
+	data, err := s.LoadSession(ctx, abilityProfileKey(studentID))
+	if err != nil || len(data) == 0 {
+		return nil, err
+	}
+	profile := &imodel.StudentAbilityProfile{}
+	if err := json.Unmarshal(data, profile); err != nil {
+		return nil, fmt.Errorf("mysql: decode ability profile: %w", err)
+	}
+	return profile, nil
 }
 
 // SaveInterviewRecord 保存面试记录
@@ -175,11 +199,33 @@ func (s *MySQLStore) SaveInterviewRecord(ctx context.Context, userID string, rec
 			report_json = VALUES(report_json),
 			review_plan_json = VALUES(review_plan_json)`
 
-	_, err := s.db.ExecContext(ctx, query, userID, record.SessionID, record.Position, record.OverallScore, reportJSON, reviewPlanJSON)
+	_, err := s.db.ExecContext(ctx, query, userID, record.SessionID, record.LearningGoal, record.OverallScore, reportJSON, reviewPlanJSON)
 	if err != nil {
 		return fmt.Errorf("mysql: save interview record: %w", err)
 	}
 	return nil
+}
+
+// LoadLatestEvaluationReport 读取学生最近一次已有评价 JSON，不改变数据库结构。
+func (s *MySQLStore) LoadLatestEvaluationReport(ctx context.Context, userID string) (*imodel.EvaluationReport, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	query := `SELECT report_json FROM interview_records
+		WHERE user_id = ? AND report_json IS NOT NULL AND report_json <> ''
+		ORDER BY created_at DESC LIMIT 1`
+	var reportJSON string
+	if err := s.db.QueryRowContext(ctx, query, userID).Scan(&reportJSON); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("mysql: load latest evaluation report: %w", err)
+	}
+	report := &imodel.EvaluationReport{}
+	if err := json.Unmarshal([]byte(reportJSON), report); err != nil {
+		return nil, fmt.Errorf("mysql: decode latest evaluation report: %w", err)
+	}
+	return report, nil
 }
 
 // SaveSession 保存会话数据到 MySQL（实现 Store 接口）

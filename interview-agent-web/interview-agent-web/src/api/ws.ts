@@ -3,7 +3,8 @@
  * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
  */
 
-import type { ClientMessage, ServerMessage } from '../types/message'
+import { adaptClientMessage } from '../types/message'
+import type { ClientMessage, LegacyClientMessage, ServerMessage } from '../types/message'
 
 export class WSClient {
   private ws: WebSocket | null = null
@@ -55,9 +56,9 @@ export class WSClient {
     }
   }
 
-  send(msg: ClientMessage) {
+  send(msg: ClientMessage | LegacyClientMessage) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg))
+      this.ws.send(JSON.stringify(adaptClientMessage(msg)))
     }
   }
 

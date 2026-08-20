@@ -24,14 +24,14 @@ import (
 	imodel "interview-agent/internal/model"
 )
 
-// reviewPlannerInstruction ReAct 系统指令：按教学能力诊断生成提升路径。
-const reviewPlannerInstruction = `你是一名教师发展培训师，要根据学员的教学能力训练报告制定个性化提升计划。
+// growthPlannerInstruction ReAct 系统指令：按学习诊断生成能力提升路径。
+const growthPlannerInstruction = `你是一名学生成长规划师，要根据学生的能力训练反馈制定个性化提升计划。
 
-资源优先级依次为：国家课程标准或权威考试大纲、教材与教师用书、优质课例、教育类经典书籍和可执行的校本教研活动。
-只有当薄弱点明确涉及数字化教学工具、教学数据分析或教育技术实践时，才可以调用 search_github_repos 搜索真实开源工具；
+资源优先级依次为：权威课程或考试标准、教材与参考书、优质课程、经典书籍和可执行的刻意练习。
+只有当待提升能力明确涉及编程、数据分析、数字工具或技术实践时，才可以调用 search_github_repos 搜索真实开源工具；
 不得为了展示工具调用而推荐与训练目标无关的技术项目。工具不可用或没有合适结果时，不编造名称和链接。
 
-规划原则：优先解决高优先级薄弱点；每个学习项包含可观察的目标、刻意练习、课后反思与复测方式；时间估算合理；不生成录用建议。
+规划原则：优先解决高优先级待提升能力；每个学习项包含可观察的目标、刻意练习、反思与复测方式；时间估算合理；不对学生作人格或职业定性。
 
 最终只输出纯 JSON（不要输出工具调用过程、思考说明或多余文字），格式：
 {
@@ -46,41 +46,40 @@ const reviewPlannerInstruction = `你是一名教师发展培训师，要根据�
   ]
 }`
 
-// ReviewPlanner 复习规划 Agent —— 全项目唯一真正调用外部工具的 Agent，用 Eino ReAct 实现：
-// 模型根据评估报告自主决定是否、用什么关键词调用 GitHub 搜索工具，再综合产出复习计划。
-type ReviewPlanner struct {
+// GrowthPlanner 成长规划 Agent —— 保留原有 Eino ReAct 与 MCP 工具调用机制。
+type GrowthPlanner struct {
 	chatModel      model.ChatModel
 	githubSearcher *mcp.GitHubSearcher // 可选，nil 时退化为纯 LLM 生成
 }
 
-// NewReviewPlanner 创建复习规划 Agent
-func NewReviewPlanner(chatModel model.ChatModel) *ReviewPlanner {
-	return &ReviewPlanner{chatModel: chatModel}
+// NewGrowthPlanner 创建成长规划 Agent。
+func NewGrowthPlanner(chatModel model.ChatModel) *GrowthPlanner {
+	return &GrowthPlanner{chatModel: chatModel}
 }
 
 // SetGitHubSearcher 设置 GitHub MCP 搜索器
-func (p *ReviewPlanner) SetGitHubSearcher(searcher *mcp.GitHubSearcher) {
+func (p *GrowthPlanner) SetGitHubSearcher(searcher *mcp.GitHubSearcher) {
 	p.githubSearcher = searcher
 }
 
-// Plan 根据评估报告生成复习计划
-func (p *ReviewPlanner) Plan(ctx context.Context, report *imodel.EvaluationReport) (*imodel.ReviewPlan, error) {
+// Plan 根据训练反馈生成成长计划。
+func (p *GrowthPlanner) Plan(ctx context.Context, report *imodel.EvaluationReport) (*imodel.ReviewPlan, error) {
 	reportJSON, _ := json.MarshalIndent(report, "", "  ")
-	userMsg := fmt.Sprintf("请根据以下教学能力训练评估报告生成提升计划：\n\n%s", string(reportJSON))
+	userMsg := fmt.Sprintf("请根据以下学生能力训练反馈生成提升计划：\n\n%s", string(reportJSON))
 
 	// 优先用 ReAct（带 GitHub 工具，由模型自主调用）；失败或无工具时降级为单轮生成
 	content, err := p.generateWithReactAgent(ctx, userMsg)
 	if err != nil || strings.TrimSpace(content) == "" {
 		if err != nil {
-			log.Printf("[ReviewPlanner] ReAct 执行失败，降级为单轮生成: %v", err)
+			log.Printf("[GrowthPlanner] ReAct 执行失败，降级为单轮生成: %v", err)
 		}
 		messages := []*schema.Message{
-			schema.SystemMessage(reviewPlannerInstruction),
+			schema.SystemMessage(growthPlannerInstruction),
 			schema.UserMessage(userMsg),
 		}
 		resp, gErr := p.chatModel.Generate(ctx, messages)
 		if gErr != nil {
-			return nil, fmt.Errorf("review_planner: generate: %w", gErr)
+			return nil, fmt.Errorf("growth_planner: generate: %w", gErr)
 		}
 		content = resp.Content
 	}
@@ -88,7 +87,7 @@ func (p *ReviewPlanner) Plan(ctx context.Context, report *imodel.EvaluationRepor
 	result := &imodel.ReviewPlan{}
 	jsonStr := extractJSON(content)
 	if err := json.Unmarshal([]byte(jsonStr), result); err != nil {
-		return nil, fmt.Errorf("review_planner: parse response: %w\nraw: %s", err, content)
+		return nil, fmt.Errorf("growth_planner: parse response: %w\nraw: %s", err, content)
 	}
 
 	result.SessionID = report.SessionID
@@ -98,14 +97,14 @@ func (p *ReviewPlanner) Plan(ctx context.Context, report *imodel.EvaluationRepor
 }
 
 // generateWithReactAgent 用 Eino ReAct（GitHub 工具由模型自主调用）生成复习计划文本。无工具时返回空串以走降级。
-func (p *ReviewPlanner) generateWithReactAgent(ctx context.Context, userMsg string) (string, error) {
+func (p *GrowthPlanner) generateWithReactAgent(ctx context.Context, userMsg string) (string, error) {
 	if p.githubSearcher == nil {
 		return "", nil // 没有 GitHub 工具，直接走降级
 	}
 
 	ghTool, err := utils.InferTool(
 		"search_github_repos",
-		"仅在提升数字化教学工具、教学数据分析或教育技术实践能力时，根据英文关键词搜索 GitHub 开源工具，返回名称、star 数、链接与简介。",
+		"仅在提升编程、数据分析、数字工具或技术实践能力时，根据英文关键词搜索 GitHub 开源工具，返回名称、star 数、链接与简介。",
 		p.searchGitHubRepos,
 	)
 	if err != nil {
@@ -116,7 +115,7 @@ func (p *ReviewPlanner) generateWithReactAgent(ctx context.Context, userMsg stri
 		Model:       p.chatModel,
 		ToolsConfig: compose.ToolsNodeConfig{Tools: []tool.BaseTool{ghTool}},
 		MessageModifier: func(_ context.Context, input []*schema.Message) []*schema.Message {
-			return append([]*schema.Message{schema.SystemMessage(reviewPlannerInstruction)}, input...)
+			return append([]*schema.Message{schema.SystemMessage(growthPlannerInstruction)}, input...)
 		},
 	})
 	if err != nil {
@@ -132,11 +131,11 @@ func (p *ReviewPlanner) generateWithReactAgent(ctx context.Context, userMsg stri
 
 // githubSearchReq ReAct 调用 GitHub 工具的入参
 type githubSearchReq struct {
-	Query string `json:"query" jsonschema:"description=教育技术或数字化教学关键词，用英文，如 learning analytics"`
+	Query string `json:"query" jsonschema:"description=编程、数据分析、数字工具或技术实践关键词，用英文"`
 }
 
 // searchGitHubRepos 工具实现：按关键词搜索 GitHub 仓库，返回格式化文本
-func (p *ReviewPlanner) searchGitHubRepos(ctx context.Context, req githubSearchReq) (string, error) {
+func (p *GrowthPlanner) searchGitHubRepos(ctx context.Context, req githubSearchReq) (string, error) {
 	repos, err := p.githubSearcher.SearchRepos(ctx, req.Query+" stars:>100", 5)
 	if err != nil || len(repos) == 0 {
 		return "未找到相关开源项目。", nil
@@ -151,7 +150,7 @@ func (p *ReviewPlanner) searchGitHubRepos(ctx context.Context, req githubSearchR
 
 // FormatReviewPlan 将复习计划格式化为 Markdown
 func FormatReviewPlan(plan *imodel.ReviewPlan) string {
-	md := "# 教学能力提升计划\n\n"
+	md := "# 学生能力提升计划\n\n"
 
 	md += "## 薄弱领域\n\n"
 	md += "| 领域 | 得分 | 优先级 |\n|------|------|--------|\n"

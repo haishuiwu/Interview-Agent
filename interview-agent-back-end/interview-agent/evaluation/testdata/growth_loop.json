@@ -1,0 +1,8 @@
+{
+  "student_id":"benchmark-student",
+  "learning_goal":"提升表达能力",
+  "before_scores":{"communication":0.55,"logical_thinking":0.80},
+  "training_scores":{"communication":75},
+  "expected_after":{"communication":0.65,"logical_thinking":0.80},
+  "expected_skill":"communication-training"
+}

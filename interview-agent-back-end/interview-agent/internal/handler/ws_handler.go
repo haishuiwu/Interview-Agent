@@ -24,19 +24,47 @@ import (
 	"interview-agent/internal/agent"
 	"interview-agent/internal/graph"
 	"interview-agent/internal/loader"
+	growthservice "interview-agent/internal/service"
 	"interview-agent/internal/skill"
+	educationtool "interview-agent/internal/tool"
 )
 
-// ClientMsg 客户端消息
-type ClientMsg struct {
-	Type       string `json:"type"`
-	Content    string `json:"content,omitempty"`
+// LegacyTrainingInputDTO 只承载历史客户端训练入参，不进入核心领域模型。
+type LegacyTrainingInputDTO struct {
 	Assessment string `json:"assessment,omitempty"`
 	Profile    string `json:"profile,omitempty"`
 	JD         string `json:"jd,omitempty"`
 	Resume     string `json:"resume,omitempty"`
-	Filename   string `json:"filename,omitempty"`
-	Data       string `json:"data,omitempty"`
+}
+
+// ClientMsg 是 WebSocket 传输 DTO；核心训练字段使用新语义。
+type ClientMsg struct {
+	Type           string `json:"type"`
+	Content        string `json:"content,omitempty"`
+	LearningGoal   string `json:"learning_goal,omitempty"`
+	StudentProfile string `json:"student_profile,omitempty"`
+	Filename       string `json:"filename,omitempty"`
+	Data           string `json:"data,omitempty"`
+	LegacyTrainingInputDTO
+}
+
+// adaptTrainingInput 把历史 API 字段映射为核心训练入参。
+func adaptTrainingInput(msg ClientMsg) (learningGoal string, studentProfile string) {
+	learningGoal = msg.LearningGoal
+	if learningGoal == "" {
+		learningGoal = msg.LegacyTrainingInputDTO.Assessment
+	}
+	if learningGoal == "" {
+		learningGoal = msg.LegacyTrainingInputDTO.JD
+	}
+	studentProfile = msg.StudentProfile
+	if studentProfile == "" {
+		studentProfile = msg.LegacyTrainingInputDTO.Profile
+	}
+	if studentProfile == "" {
+		studentProfile = msg.LegacyTrainingInputDTO.Resume
+	}
+	return learningGoal, studentProfile
 }
 
 // ServerMsg 服务端消息
@@ -113,15 +141,8 @@ func (ws *WSSession) Run() {
 		case "chat":
 			ws.handleChat(msg.Content)
 		case "start_training", "start_interview":
-			assessment := msg.Assessment
-			if assessment == "" {
-				assessment = msg.JD
-			}
-			profile := msg.Profile
-			if profile == "" {
-				profile = msg.Resume
-			}
-			ws.handleStartInterview(assessment, profile)
+			learningGoal, studentProfile := adaptTrainingInput(msg)
+			ws.handleStartTraining(learningGoal, studentProfile)
 		case "answer":
 			ws.handleAnswer(msg.Content)
 		case "upload_questions":
@@ -159,8 +180,8 @@ func (ws *WSSession) handleChat(content string) {
 			ws.sendMsg(ServerMsg{Type: "chat_reply", Content: "技能会话已超时，回到普通聊天。"})
 			return
 		}
-		// 技能会话进行中，若用户又发出明确的新技能/新测验意图（例如测验做到一半再说
-		// 「来几道 mysql 面试题」），则结束当前会话、切换到新技能，而不是把这句话当成
+		// 技能会话进行中，若用户又发出明确的新能力训练意图（例如训练做到一半再说
+		// 「帮我练习批判性思维」），则结束当前会话、切换到新技能，而不是把这句话当成
 		// 当前题目的回答。普通答题内容不含触发词，不会被误切。
 		if ws.cfg.SkillRegistry == nil || ws.cfg.SkillRegistry.Match(content) == nil {
 			resp, err := ws.activeSkill.Handle(ctx, resolved, ws.skillState)
@@ -226,7 +247,7 @@ func (ws *WSSession) handleChat(content string) {
 	ws.sendMsg(ServerMsg{Type: "chat_reply", Content: resp})
 }
 
-func (ws *WSSession) handleStartInterview(jdRaw, resumeRaw string) {
+func (ws *WSSession) handleStartTraining(learningGoalRaw, studentProfileRaw string) {
 	ctx, answerCh, generation, ok := ws.beginInterview()
 	if !ok {
 		ws.sendMsg(ServerMsg{
@@ -237,35 +258,35 @@ func (ws *WSSession) handleStartInterview(jdRaw, resumeRaw string) {
 		return
 	}
 
-	go ws.runInterview(ctx, answerCh, generation, jdRaw, resumeRaw)
+	go ws.runTraining(ctx, answerCh, generation, learningGoalRaw, studentProfileRaw)
 }
 
-func (ws *WSSession) runInterview(
+func (ws *WSSession) runTraining(
 	ctx context.Context,
 	answerCh chan string,
 	generation uint64,
-	jdRaw string,
-	resumeRaw string,
+	learningGoalRaw string,
+	studentProfileRaw string,
 ) {
 	defer ws.finishInterview(generation)
 
-	jdText, err := ws.resolveInput(ctx, jdRaw)
+	learningGoalText, err := ws.resolveInput(ctx, learningGoalRaw)
 	if err != nil {
 		if ctx.Err() == nil {
 			ws.sendInterviewMsg(generation, ServerMsg{
 				Type:    "error",
-				Message: "目标标准解析失败，请粘贴教师岗位要求、面试大纲或教学能力考核标准，或上传文件重试",
+				Message: "学习目标解析失败，请粘贴学习目标、课程标准或能力要求，或上传文件重试",
 			})
 		}
 		return
 	}
 
-	resumeText, err := ws.resolveInput(ctx, resumeRaw)
+	studentProfileText, err := ws.resolveInput(ctx, studentProfileRaw)
 	if err != nil {
 		if ctx.Err() == nil {
 			ws.sendInterviewMsg(generation, ServerMsg{
 				Type:    "error",
-				Message: "教学档案解析失败，请粘贴学段、学科及授课/实习经历，或上传文件重试",
+				Message: "学生画像解析失败，请粘贴已有基础、学习经历与能力证据，或上传文件重试",
 			})
 		}
 		return
@@ -283,7 +304,7 @@ func (ws *WSSession) runInterview(
 		APIKey:         ws.cfg.APIKey,
 	})
 
-	callbacks := &graph.InterviewCallbacks{
+	callbacks := &graph.TrainingCallbacks{
 		OnStageChange: func(stage string, msg string) {
 			ws.sendInterviewMsg(generation, ServerMsg{Type: "stage_change", Stage: stage, Message: msg})
 		},
@@ -307,9 +328,16 @@ func (ws *WSSession) runInterview(
 		},
 	}
 
-	_, err = orchestrator.RunInterview(ctx, jdText, resumeText, ws.userID, callbacks)
+	growthService := growthservice.NewStudentGrowthDataService(
+		ws.cfg.CombinedStore,
+		ws.cfg.MySQLStore,
+		ws.cfg.MilvusStore,
+		ws.cfg.BM25Manager,
+	)
+	ctx = educationtool.WithRuntime(ctx, ws.userID, growthService)
+	_, err = orchestrator.RunTraining(ctx, learningGoalText, studentProfileText, ws.userID, callbacks)
 	if err != nil && !errors.Is(err, graph.ErrUserQuit) && !errors.Is(err, context.Canceled) {
-		ws.sendInterviewMsg(generation, ServerMsg{Type: "error", Message: "教学能力训练流程出错: " + err.Error()})
+		ws.sendInterviewMsg(generation, ServerMsg{Type: "error", Message: "学生能力训练流程出错: " + err.Error()})
 	}
 }
 
@@ -701,7 +729,7 @@ func (ws *WSSession) resolveInput(ctx context.Context, raw string) (string, erro
 	// 检查内容中是否包含 URL（可能是纯 URL 或混合文本）
 	trimmed := strings.TrimSpace(raw)
 	if loader.IsURL(trimmed) {
-		return loader.ExtractJDFromURL(ctx, trimmed, ws.cfg.ChatModel)
+		return loader.ExtractAbilityStandardFromURL(ctx, trimmed, ws.cfg.ChatModel)
 	}
 
 	return raw, nil

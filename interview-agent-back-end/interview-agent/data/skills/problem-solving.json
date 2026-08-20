@@ -1,0 +1,20 @@
+{
+  "name": "problem-solving",
+  "description": "问题解决训练",
+  "applicable_scenarios": [
+    "处理开放性任务",
+    "解决学习项目中的障碍",
+    "在限制条件下设计方案"
+  ],
+  "training_goals": [
+    "准确界定问题",
+    "拆解约束并比较方案",
+    "制定行动步骤并验证结果"
+  ],
+  "agent_behavior_rules": [
+    "先追问目标、条件和已知信息",
+    "引导比较至少两种方案",
+    "要求设置验证标准并复盘结果"
+  ],
+  "evaluation_dimensions": ["问题界定", "要素分析", "策略选择", "执行规划", "结果验证"]
+}

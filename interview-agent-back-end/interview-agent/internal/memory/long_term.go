@@ -10,6 +10,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	imodel "interview-agent/internal/model"
 )
 
 const (
@@ -21,9 +23,9 @@ const (
 type UserProfile struct {
 	UserID        string            `json:"user_id"`
 	Name          string            `json:"name"`
-	SkillLevel    map[string]string `json:"skill_level"`     // 技能 -> 水平（beginner/intermediate/advanced）
-	WeakPoints    []WeakPoint       `json:"weak_points"`     // 薄弱点列表
-	InterviewHist []InterviewRecord `json:"interview_hist"`  // 面试历史
+	SkillLevel    map[string]string `json:"skill_level"`    // 技能 -> 水平（beginner/intermediate/advanced）
+	WeakPoints    []WeakPoint       `json:"weak_points"`    // 薄弱点列表
+	InterviewHist []InterviewRecord `json:"interview_hist"` // 面试历史
 	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
@@ -39,7 +41,7 @@ type WeakPoint struct {
 // InterviewRecord 面试记录摘要
 type InterviewRecord struct {
 	SessionID    string    `json:"session_id"`
-	Position     string    `json:"position"`
+	LearningGoal string    `json:"learning_goal"`
 	OverallScore float64   `json:"overall_score"`
 	Date         time.Time `json:"date"`
 }
@@ -47,17 +49,51 @@ type InterviewRecord struct {
 // LongTermMemory 长期记忆：管理用户画像和面试历史
 // 当前使用内存存储，后续可替换为 MySQL 持久化
 type LongTermMemory struct {
-	mu       sync.RWMutex
-	profiles map[string]*UserProfile // userID -> profile
-	store    Store                   // 可选的持久化存储
+	mu              sync.RWMutex
+	profiles        map[string]*UserProfile                  // userID -> profile
+	abilityProfiles map[string]*imodel.StudentAbilityProfile // studentID -> ability profile
+	store           Store                                    // 可选的持久化存储
 }
 
 // NewLongTermMemory 创建长期记忆
 func NewLongTermMemory(store Store) *LongTermMemory {
 	return &LongTermMemory{
-		profiles: make(map[string]*UserProfile),
-		store:    store,
+		profiles:        make(map[string]*UserProfile),
+		abilityProfiles: make(map[string]*imodel.StudentAbilityProfile),
+		store:           store,
 	}
+}
+
+// GetAbilityProfile 获取跨训练维护的学生能力画像；无历史时返回 nil。
+func (m *LongTermMemory) GetAbilityProfile(ctx context.Context, studentID string) (*imodel.StudentAbilityProfile, error) {
+	m.mu.RLock()
+	profile := m.abilityProfiles[studentID]
+	m.mu.RUnlock()
+	if profile != nil {
+		return profile, nil
+	}
+	if m.store == nil {
+		return nil, nil
+	}
+	profile, err := m.store.LoadAbilityProfile(ctx, studentID)
+	if err != nil || profile == nil {
+		return profile, err
+	}
+	m.mu.Lock()
+	m.abilityProfiles[studentID] = profile
+	m.mu.Unlock()
+	return profile, nil
+}
+
+// SaveAbilityProfile 更新缓存并持久化完整学生能力画像。
+func (m *LongTermMemory) SaveAbilityProfile(ctx context.Context, profile *imodel.StudentAbilityProfile) error {
+	m.mu.Lock()
+	m.abilityProfiles[profile.StudentID] = profile
+	m.mu.Unlock()
+	if m.store != nil {
+		return m.store.SaveAbilityProfile(ctx, profile)
+	}
+	return nil
 }
 
 // GetProfile 获取用户画像

@@ -121,7 +121,7 @@ func runChat() {
 	defer milvusStore.Close()
 
 	bm25Manager := rag.NewBM25Manager(10)
-	loadBuiltInTeacherQuestions(bm25Manager)
+	loadBuiltInStudentAbilityQuestions(bm25Manager)
 
 	// ====== 5. 初始化 GitHub MCP（可选） ======
 	var githubSearcher *mcp.GitHubSearcher
@@ -182,7 +182,7 @@ func runChat() {
 		intent := router.Route(input, isInterviewing)
 
 		switch intent {
-		case agent.IntentStartInterview:
+		case agent.IntentStartTraining:
 			if !isInterviewing {
 				fmt.Println("\n好的，开始准备本轮教师教学能力训练！")
 				// 收集 JD
@@ -211,7 +211,7 @@ func runChat() {
 				interviewScanner := bufio.NewScanner(os.Stdin)
 				interviewScanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
-				callbacks := &graph.InterviewCallbacks{
+				callbacks := &graph.TrainingCallbacks{
 					OnStageChange: func(stage string, msg string) {
 						fmt.Printf("\n[%s] %s\n", stage, msg)
 					},
@@ -241,7 +241,7 @@ func runChat() {
 					},
 				}
 
-				_, err := orchestrator.RunInterview(ctx, jdText, resumeText, "default_user", callbacks)
+				_, err := orchestrator.RunTraining(ctx, jdText, resumeText, "default_user", callbacks)
 				if err != nil {
 					fmt.Printf("\n训练流程出错: %v\n", err)
 				}
@@ -250,9 +250,9 @@ func runChat() {
 				fmt.Println("\n本轮训练结束！你可以继续交流，或者说「开始训练」再来一轮。")
 			}
 
-		case agent.IntentUploadJD:
+		case agent.IntentUploadAbilityStandard:
 			fmt.Println("\n检测到目标标准链接，开始准备教师训练！")
-			jdText, err := loader.ExtractJDFromURL(ctx, input, chatModel)
+			jdText, err := loader.ExtractAbilityStandardFromURL(ctx, input, chatModel)
 			if err != nil {
 				fmt.Printf("URL 抓取失败: %v\n请改用文件或手动输入方式，或说「开始训练」手动输入标准。\n", err)
 				continue
@@ -276,7 +276,7 @@ func runChat() {
 			interviewScanner := bufio.NewScanner(os.Stdin)
 			interviewScanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
-			callbacks := &graph.InterviewCallbacks{
+			callbacks := &graph.TrainingCallbacks{
 				OnStageChange: func(stage string, msg string) {
 					fmt.Printf("\n[%s] %s\n", stage, msg)
 				},
@@ -306,7 +306,7 @@ func runChat() {
 				},
 			}
 
-			_, err = orchestrator.RunInterview(ctx, jdText, resumeText, "default_user", callbacks)
+			_, err = orchestrator.RunTraining(ctx, jdText, resumeText, "default_user", callbacks)
 			if err != nil {
 				fmt.Printf("\n训练流程出错: %v\n", err)
 			}
@@ -397,7 +397,7 @@ func runInterview() {
 
 	// ====== 7. BM25 ======
 	bm25Manager := rag.NewBM25Manager(10)
-	loadBuiltInTeacherQuestions(bm25Manager)
+	loadBuiltInStudentAbilityQuestions(bm25Manager)
 
 	// ====== 8. GitHub MCP（可选） ======
 	var interviewGitHubSearcher *mcp.GitHubSearcher
@@ -453,7 +453,7 @@ func runInterview() {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
-	callbacks := &graph.InterviewCallbacks{
+	callbacks := &graph.TrainingCallbacks{
 		OnStageChange: func(stage string, msg string) {
 			fmt.Printf("\n[%s] %s\n", stage, msg)
 		},
@@ -483,7 +483,7 @@ func runInterview() {
 		},
 	}
 
-	_, err = orchestrator.RunInterview(ctx, jdText, resumeText, "default_user", callbacks)
+	_, err = orchestrator.RunTraining(ctx, jdText, resumeText, "default_user", callbacks)
 	if err != nil {
 		log.Fatalf("训练流程出错: %v", err)
 	}
@@ -514,7 +514,7 @@ func collectJD(ctx context.Context, chatModel model.ChatModel) string {
 	// 判断是 URL
 	if loader.IsURL(firstLine) {
 		fmt.Printf("检测到 URL，正在抓取: %s\n", firstLine)
-		text, err := loader.ExtractJDFromURL(ctx, firstLine, chatModel)
+		text, err := loader.ExtractAbilityStandardFromURL(ctx, firstLine, chatModel)
 		if err != nil {
 			fmt.Printf("URL 抓取失败: %v\n", err)
 			fmt.Println("请改用文件或手动输入方式。")
@@ -798,7 +798,7 @@ func runWeb() {
 	defer milvusStore.Close()
 
 	bm25Manager := rag.NewBM25Manager(10)
-	loadBuiltInTeacherQuestions(bm25Manager)
+	loadBuiltInStudentAbilityQuestions(bm25Manager)
 
 	// 初始化 GitHub MCP（可选）
 	var webGitHubSearcher *mcp.GitHubSearcher
@@ -823,8 +823,11 @@ func runWeb() {
 
 	// 初始化 Skill 注册中心
 	skillRegistry := skill.NewSkillRegistry()
-	// 教师训练场景暂不注册历史技术面试 Skill，避免聊天入口偏离产品立意。
-	// 后续只在形成独立的教师教研 Skill（如说课拆解、课堂情境复盘）后再注册。
+	skillRegistry.Register(skill.NewLogicalThinkingSkill(chatModel, milvusStore, bm25Manager))
+	skillRegistry.Register(skill.NewCommunicationTrainingSkill(chatModel, milvusStore, bm25Manager))
+	skillRegistry.Register(skill.NewProblemSolvingSkill(chatModel, milvusStore, bm25Manager))
+	skillRegistry.Register(skill.NewCriticalThinkingSkill(chatModel, milvusStore, bm25Manager))
+	skillRegistry.Register(skill.NewReflectionTrainingSkill(chatModel, milvusStore, bm25Manager))
 
 	var ttsProvider speech.Synthesizer
 	if cfg.Speech.Enabled && cfg.Speech.TTSEnabled {
@@ -943,20 +946,20 @@ func printUsage() {
 	fmt.Println("  1. cp .env.example .env && 填入 DASHSCOPE_API_KEY")
 	fmt.Println("  2. make infra-up                    # 启动 Milvus/Redis/MySQL")
 	fmt.Println("  3. go run cmd/main.go               # 进入 AI 教研聊天模式")
-	fmt.Println("  4. go run cmd/main.go interview     # 直接开始教师训练")
+	fmt.Println("  4. go run cmd/main.go interview     # 使用兼容命令直接开始学生能力训练")
 	fmt.Println()
 	fmt.Println("示例:")
 	fmt.Println("  go run cmd/main.go interview")
-	fmt.Println("  > 请输入: https://www.zhipin.com/job_detail/xxx.html")
-	fmt.Println("  > 请输入: ./my_resume.pdf")
+	fmt.Println("  > 请输入: https://example.edu/learning-standard.html")
+	fmt.Println("  > 请输入: ./student_profile.pdf")
 }
 
-// loadBuiltInTeacherQuestions 让系统在未连接或尚未导入向量库时，也能使用内置教师题库。
-func loadBuiltInTeacherQuestions(manager *rag.BM25Manager) {
-	const filePath = "data/questions/teacher_training_theory.json"
+// loadBuiltInStudentAbilityQuestions 让系统在未连接或尚未导入向量库时，也能使用内置学生能力题库。
+func loadBuiltInStudentAbilityQuestions(manager *rag.BM25Manager) {
+	const filePath = "data/questions/student_ability_training.json"
 	docs, err := rag.LoadBM25DocsFromFile(filePath)
 	if err != nil {
-		log.Printf("[TeacherBank] 内置教师题库加载失败: %v", err)
+		log.Printf("[StudentAbilityBank] 内置学生能力题库加载失败: %v", err)
 		return
 	}
 	schemaDocs := make([]*schema.Document, len(docs))
@@ -967,5 +970,5 @@ func loadBuiltInTeacherQuestions(manager *rag.BM25Manager) {
 		}
 	}
 	manager.ReplaceDocuments("default_user", schemaDocs)
-	log.Printf("[TeacherBank] 已加载 %d 道内置教师训练题", len(schemaDocs))
+	log.Printf("[StudentAbilityBank] 已加载 %d 道内置学生能力训练题", len(schemaDocs))
 }

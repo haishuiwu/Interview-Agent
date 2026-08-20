@@ -1,0 +1,8 @@
+[
+  {"id":"diagnosis-01","question":"请用结论、理由和例子说明你的观点","answer":"我先给出结论，再解释两个理由，并举了一个例子，但没有确认听众是否理解。","reference":"结论、理由、例子、听众确认","skill":"communication-training","question_type":"practice","hit":["结论","理由","例子"],"missed":["听众确认"],"expected_ability":"communication","expected_score":75},
+  {"id":"diagnosis-02","question":"请说明判断过程中的前提、推理和结论","answer":"我列出了前提并逐步推导到结论，也检查了前后一致性，但没有提出反例。","reference":"前提、推理、结论、一致性、反例","skill":"logical-thinking","question_type":"theory","hit":["前提","推理","结论","一致性"],"missed":["反例"],"expected_ability":"logical_thinking","expected_score":80},
+  {"id":"diagnosis-03","question":"面对学习进度落后，请提出解决方案","answer":"我说明了目标、限制和一个执行方案，但没有比较替代方案，也没有验证标准。","reference":"目标、限制、方案比较、执行步骤、验证标准","skill":"problem-solving","question_type":"practice","hit":["目标","限制","执行步骤"],"missed":["方案比较","验证标准"],"expected_ability":"problem_solving","expected_score":60},
+  {"id":"diagnosis-04","question":"请判断这条学习建议是否可信","answer":"我检查了来源、证据和隐藏假设，但没有说明结论适用的边界。","reference":"来源、证据、隐藏假设、结论边界","skill":"critical-thinking","question_type":"scenario","hit":["来源","证据","隐藏假设"],"missed":["结论边界"],"expected_ability":"critical_thinking","expected_score":75},
+  {"id":"diagnosis-05","question":"请反思一次学习失误并制定改进行动","answer":"我还原了过程，找到可控原因并提出下次行动，但没有说明如何迁移到新任务。","reference":"过程、自我觉察、原因、改进行动、迁移","skill":"reflection-training","question_type":"practice","hit":["过程","原因","改进行动","自我觉察"],"missed":["迁移"],"expected_ability":"reflection","expected_score":80},
+  {"id":"diagnosis-06","question":"请向低年级学生解释这个概念","answer":"不会","reference":"概念、结构、例子、听众意识","skill":"communication-training","question_type":"practice","hit":[],"missed":["概念","结构","例子","听众意识"],"expected_ability":"communication","expected_score":0}
+]

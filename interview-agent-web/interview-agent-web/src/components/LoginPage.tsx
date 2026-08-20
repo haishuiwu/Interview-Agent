@@ -44,7 +44,7 @@ export function LoginPage() {
           师练 AI
         </h1>
         <p className="text-sm text-center text-gray-400 mb-8">
-          教师教学能力训练与成长助手
+          学生能力训练与成长助手
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

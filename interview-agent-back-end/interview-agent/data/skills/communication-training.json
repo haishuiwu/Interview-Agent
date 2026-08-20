@@ -1,0 +1,20 @@
+{
+  "name": "communication-training",
+  "description": "沟通表达训练",
+  "applicable_scenarios": [
+    "向不同对象解释观点",
+    "小组讨论与意见协调",
+    "总结汇报与口头表达"
+  ],
+  "training_goals": [
+    "清晰组织信息",
+    "根据听众调整表达",
+    "准确回应他人观点并推动共识"
+  ],
+  "agent_behavior_rules": [
+    "明确听众、目的与表达限制",
+    "要求学生重述和澄清",
+    "反馈聚焦表达效果而非语言风格偏好"
+  ],
+  "evaluation_dimensions": ["表达清晰度", "信息结构", "对象意识", "回应与互动", "语言准确性"]
+}

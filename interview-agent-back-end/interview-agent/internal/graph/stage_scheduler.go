@@ -29,7 +29,7 @@ type adjustFunc func(cur imodel.DifficultyLevel, consecRight, consecWrong int) i
 // 职责：
 //   - 按 stages 顺序推进，跳过没有候选题的阶段；
 //   - 每个阶段从该阶段候选池按当前难度就近取题，最多取 askNum 道；
-//   - 进入新阶段时把难度重置为 medium、连对/连错清零（阶段间不继承）；
+//   - 进入新阶段时把难度重置为本轮画像起点（默认 medium）、连对/连错清零；
 //   - 依据每题得分调整本阶段内的后续难度。
 //
 // 把这套逻辑从 nodeInterview 的 IO（提问/评分/回调）中剥离出来，使其可独立测试。
@@ -44,12 +44,13 @@ type stageScheduler struct {
 	started    bool
 
 	difficulty  imodel.DifficultyLevel
+	initial     imodel.DifficultyLevel
 	consecRight int
 	consecWrong int
 }
 
 // newStageScheduler 按题型给候选题分组，构建调度器。
-func newStageScheduler(stages []stageConfig, questions []imodel.PlannedQuestion, adjust adjustFunc) *stageScheduler {
+func newStageScheduler(stages []stageConfig, questions []imodel.PlannedQuestion, adjust adjustFunc, initial ...imodel.DifficultyLevel) *stageScheduler {
 	normalizedStages := make([]stageConfig, len(stages))
 	copy(normalizedStages, stages)
 	for i := range normalizedStages {
@@ -60,10 +61,18 @@ func newStageScheduler(stages []stageConfig, questions []imodel.PlannedQuestion,
 		normalizedType := imodel.NormalizeQuestionType(q.Type)
 		byType[normalizedType] = append(byType[normalizedType], q)
 	}
+	initialDifficulty := imodel.DifficultyMedium
+	if len(initial) > 0 {
+		switch initial[0] {
+		case imodel.DifficultyEasy, imodel.DifficultyMedium, imodel.DifficultyHard:
+			initialDifficulty = initial[0]
+		}
+	}
 	return &stageScheduler{
-		stages: normalizedStages,
-		byType: byType,
-		adjust: adjust,
+		stages:  normalizedStages,
+		byType:  byType,
+		adjust:  adjust,
+		initial: initialDifficulty,
 	}
 }
 
@@ -114,8 +123,8 @@ func (s *stageScheduler) advanceStage() bool {
 		s.stageIdx = i
 		s.pool = newQuestionPool(candidates)
 		s.stageAsked = 0
-		// 进入新阶段：难度调节独立重置，不参考上一阶段。
-		s.difficulty = imodel.DifficultyMedium
+		// 进入新阶段：难度调节独立重置到本轮画像确定的起点，不继承上一阶段表现。
+		s.difficulty = s.initial
 		s.consecRight = 0
 		s.consecWrong = 0
 		s.started = true

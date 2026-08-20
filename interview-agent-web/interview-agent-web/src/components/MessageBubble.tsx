@@ -76,7 +76,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
         </div>
         {eval_.skill_coverage && eval_.skill_coverage.length > 0 && (
           <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1">各教学能力方向</div>
+            <div className="text-xs text-gray-500 mb-1">各能力方向</div>
             <div className="flex flex-wrap gap-1.5">
               {eval_.skill_coverage.map((sc) => (
                 <span

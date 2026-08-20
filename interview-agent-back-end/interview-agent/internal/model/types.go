@@ -3,48 +3,59 @@
  * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
  */
 
-// Package model 定义教师面试与教学能力训练系统的核心数据模型。
+// Package model 定义学生能力提升系统的核心数据模型。
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ============================================================
-// 教师岗位/考核标准分析相关
+// 学习目标与能力标准分析相关
 // ============================================================
 
-// JDAnalysis 教师岗位要求或教师资格考核标准的分析结果。
-// 类型名和 JSON 字段暂时保留，以兼容已有客户端与历史数据。
-type JDAnalysis struct {
-	RawJD            string            `json:"raw_jd"`           // 原始 JD 文本
-	Position         string            `json:"position"`         // 岗位名称
-	Company          string            `json:"company"`          // 公司名称
-	RequiredSkills   []Skill           `json:"required_skills"`  // 必须技能
-	PreferredSkills  []Skill           `json:"preferred_skills"` // 加分技能
-	ExperienceLevel  string            `json:"experience_level"` // 经验要求（junior/mid/senior）
-	Responsibilities []string          `json:"responsibilities"` // 岗位职责
-	KeyTopics        []string          `json:"key_topics"`       // 面试重点方向
-	Extra            map[string]string `json:"extra,omitempty"`  // 扩展字段
+// AbilityStandard 是从学习目标、课程标准或能力要求中提取的结构化标准。
+type AbilityStandard struct {
+	RawText              string            `json:"raw_text"`              // 原始能力标准文本
+	LearningGoal         string            `json:"learning_goal"`         // 本轮学习目标
+	Grade                string            `json:"grade,omitempty"`       // 学段或年级
+	Subject              string            `json:"subject,omitempty"`     // 学科或学习领域
+	StandardSource       string            `json:"standard_source"`       // 标准来源（如课程、考试或培养方案）
+	TargetAbilities      []Ability         `json:"target_abilities"`      // 本轮目标能力
+	ExtensionAbilities   []Ability         `json:"extension_abilities"`   // 进阶能力
+	ProficiencyLevel     string            `json:"proficiency_level"`     // 当前目标层级
+	LearningRequirements []string          `json:"learning_requirements"` // 学习与实践要求
+	KeyTopics            []string          `json:"key_topics"`            // 重点训练方向
+	Extra                map[string]string `json:"extra,omitempty"`       // 扩展字段
 }
 
-// Skill 教学能力项
-type Skill struct {
+// Ability 能力标准中的单项能力。
+type Ability struct {
 	Name       string `json:"name"`       // 技能名称
-	Category   string `json:"category"`   // 分类（language/framework/database/cloud/other）
+	Category   string `json:"category"`   // 能力分类
 	Importance string `json:"importance"` // 重要性（must/preferred）
 }
 
 // ============================================================
-// 教师档案相关
+// 学生画像相关
 // ============================================================
 
-// Resume 教师教学档案。类型名暂时保留，以兼容已有持久化结构。
-type Resume struct {
-	RawText    string      `json:"raw_text"`   // 原始简历文本
-	Name       string      `json:"name"`       // 姓名
-	Education  []Education `json:"education"`  // 教育经历
-	Experience []WorkExp   `json:"experience"` // 工作/项目经历
-	Skills     []string    `json:"skills"`     // 技能列表
-	Projects   []Project   `json:"projects"`   // 项目经历
+// StudentProfile 描述学生已有基础、学习经历与能力证据。
+type StudentProfile struct {
+	StudentID           string               `json:"student_id"`
+	Name                string               `json:"name"`
+	Grade               string               `json:"grade,omitempty"`
+	Subject             string               `json:"subject,omitempty"`
+	LearningGoal        string               `json:"learning_goal,omitempty"`
+	RawText             string               `json:"raw_text"`
+	Education           []Education          `json:"education,omitempty"`
+	LearningExperiences []LearningExperience `json:"learning_experiences,omitempty"`
+	LearningProjects    []LearningProject    `json:"learning_projects,omitempty"`
+	TargetAbilities     []string             `json:"target_abilities,omitempty"`
+	Strengths           []string             `json:"strengths,omitempty"`
+	Weaknesses          []string             `json:"weaknesses,omitempty"`
+	AbilityScores       map[string]float64   `json:"ability_scores,omitempty"`
 }
 
 // Education 教育经历
@@ -55,45 +66,48 @@ type Education struct {
 	Year   string `json:"year"`
 }
 
-// WorkExp 工作经历
-type WorkExp struct {
-	Company     string   `json:"company"`
-	Title       string   `json:"title"`
-	Duration    string   `json:"duration"`
-	Description string   `json:"description"`
-	TechStack   []string `json:"tech_stack"`
+// LearningExperience 学生的学习或实践经历。
+type LearningExperience struct {
+	Organization string   `json:"organization,omitempty"`
+	Activity     string   `json:"activity"`
+	Duration     string   `json:"duration,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Abilities    []string `json:"abilities,omitempty"`
 }
 
-// Project 项目经历
-type Project struct {
-	Name        string   `json:"name"`
-	Role        string   `json:"role"`
-	Description string   `json:"description"`
-	TechStack   []string `json:"tech_stack"`
-	Highlights  []string `json:"highlights"`
+// LearningProject 学生的学习项目或作品。
+type LearningProject struct {
+	Name         string   `json:"name"`
+	Contribution string   `json:"contribution,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Abilities    []string `json:"abilities,omitempty"`
+	Highlights   []string `json:"highlights,omitempty"`
 }
 
 // ============================================================
-// 教师档案与考核标准匹配相关
+// 学生画像与能力标准诊断相关
 // ============================================================
 
-// ResumeMatchResult 简历与 JD 匹配结果
-type ResumeMatchResult struct {
-	OverallScore float64      `json:"overall_score"` // 综合匹配分（0-100）
-	SkillMatch   []SkillMatch `json:"skill_match"`   // 技能匹配详情
-	Strengths    []string     `json:"strengths"`     // 匹配优势
-	Weaknesses   []string     `json:"weaknesses"`    // 薄弱环节
-	FocusAreas   []string     `json:"focus_areas"`   // 面试重点考察方向
-	ResumeGaps   []string     `json:"resume_gaps"`   // 简历空白点（可深挖）
+// LearningDiagnosis 诊断学生当前能力证据与目标能力标准之间的差距。
+type LearningDiagnosis struct {
+	StudentID          string              `json:"student_id"`
+	LearningGoal       string              `json:"learning_goal"`
+	OverallScore       float64             `json:"overall_score"`       // 当前能力证据覆盖度（0-100）
+	AbilityAssessments []AbilityAssessment `json:"ability_assessments"` // 单项能力诊断
+	AbilityScores      map[string]float64  `json:"ability_scores"`      // 各能力当前得分
+	Strengths          []string            `json:"strengths"`           // 已有优势
+	Weaknesses         []string            `json:"weaknesses"`          // 待提升能力
+	FocusAreas         []string            `json:"focus_areas"`         // 后续训练重点
+	EvidenceGaps       []string            `json:"evidence_gaps"`       // 需要训练验证的证据缺口
 }
 
-// SkillMatch 单项技能匹配
-type SkillMatch struct {
-	SkillName  string  `json:"skill_name"`
-	Required   bool    `json:"required"`    // 是否必须技能
-	Matched    bool    `json:"matched"`     // 是否匹配
-	MatchScore float64 `json:"match_score"` // 匹配度（0-100）
-	Evidence   string  `json:"evidence"`    // 匹配证据（来自简历的哪部分）
+// AbilityAssessment 单项目标能力诊断。
+type AbilityAssessment struct {
+	AbilityName  string  `json:"ability_name"`
+	Target       bool    `json:"target"`
+	Demonstrated bool    `json:"demonstrated"`
+	Score        float64 `json:"score"`
+	Evidence     string  `json:"evidence"`
 }
 
 // ============================================================
@@ -101,12 +115,12 @@ type SkillMatch struct {
 // ============================================================
 
 const (
-	QuestionTypeTheory   = "theory"   // 教育理论与学科素养
-	QuestionTypePractice = "practice" // 教学实践、说课与试讲
-	QuestionTypeScenario = "scenario" // 课堂情境与教育应变
+	QuestionTypeTheory   = "theory"   // 知识理解与原理
+	QuestionTypePractice = "practice" // 实践应用
+	QuestionTypeScenario = "scenario" // 综合情境与问题解决
 )
 
-// NormalizeQuestionType 将历史技术面试题型映射到教师训练题型，兼容已有题库数据。
+// NormalizeQuestionType 将历史题型映射到能力训练题型，兼容已有题库数据。
 func NormalizeQuestionType(questionType string) string {
 	switch questionType {
 	case "basic", "algorithm", QuestionTypeTheory:
@@ -123,11 +137,11 @@ func NormalizeQuestionType(questionType string) string {
 // QuestionDirection 训练问题方向（Phase 1 输出）
 type QuestionDirection struct {
 	Topic       string   `json:"topic"`             // 出题方向/考点（如"sync.Map并发安全"）
-	Type        string   `json:"type"`              // 类型（basic/experience/design）
+	Type        string   `json:"type"`              // 类型（theory/practice/scenario）
 	Difficulty  string   `json:"difficulty"`        // 难度（easy/medium/hard）
 	SearchQuery string   `json:"search_query"`      // 用于题库检索的关键词
 	Skills      []string `json:"skills"`            // 考察技能点
-	Context     string   `json:"context,omitempty"` // 简历中相关上下文（experience 类必填）
+	Context     string   `json:"context,omitempty"` // 学生画像中的相关上下文（practice 类按需填写）
 }
 
 // QuestionDirectionPlan Phase 1 输出：出题方向规划
@@ -142,18 +156,18 @@ type QuestionPlan struct {
 	Questions      []PlannedQuestion `json:"questions"`       // 规划的题目列表
 }
 
-// QuestionDistrib 教师训练题型分布。字段名保留用于兼容旧报告。
+// QuestionDistrib 能力训练题型分布。
 type QuestionDistrib struct {
-	Basic      int `json:"basic"`      // 基础知识题数
-	Experience int `json:"experience"` // 工作/实习/项目经历题数
-	Design     int `json:"design"`     // 系统设计题数
+	Theory   int `json:"theory"`   // 知识理解题数
+	Practice int `json:"practice"` // 实践应用题数
+	Scenario int `json:"scenario"` // 综合情境题数
 }
 
-// PlannedQuestion 规划的教师训练题
+// PlannedQuestion 规划的能力训练题。
 type PlannedQuestion struct {
 	ID         string   `json:"id"`
 	Content    string   `json:"content"`    // 题目内容
-	Type       string   `json:"type"`       // 类型（basic/experience/design）
+	Type       string   `json:"type"`       // 类型（theory/practice/scenario）
 	Difficulty string   `json:"difficulty"` // 难度（easy/medium/hard）
 	Skills     []string `json:"skills"`     // 考察技能点
 	FollowUps  []string `json:"follow_ups"` // 预设追问
@@ -162,7 +176,7 @@ type PlannedQuestion struct {
 }
 
 // ============================================================
-// 面试过程相关
+// 能力训练过程相关
 // ============================================================
 
 // DifficultyLevel 难度等级
@@ -174,16 +188,93 @@ const (
 	DifficultyHard   DifficultyLevel = "hard"
 )
 
-// InterviewState 面试过程状态
-type InterviewState struct {
-	SessionID         string          `json:"session_id"`
-	CurrentQuestion   int             `json:"current_question"`   // 当前第几题
-	TotalQuestions    int             `json:"total_questions"`    // 总题数
-	CurrentDifficulty DifficultyLevel `json:"current_difficulty"` // 当前难度
-	ConsecutiveRight  int             `json:"consecutive_right"`  // 连续答对
-	ConsecutiveWrong  int             `json:"consecutive_wrong"`  // 连续答错
-	QAHistory         []QAPair        `json:"qa_history"`         // 问答历史
-	CandidateProfile  string          `json:"candidate_profile"`  // 候选人动态画像（面试过程中实时更新）
+const (
+	AbilityLogicalThinking  = "logical_thinking"
+	AbilityCommunication    = "communication"
+	AbilityProblemSolving   = "problem_solving"
+	AbilityCriticalThinking = "critical_thinking"
+	AbilityReflection       = "reflection"
+)
+
+// CoreAbilityDimensions 返回与现有五个训练 Skill 对齐的能力维度。
+func CoreAbilityDimensions() []string {
+	return []string{
+		AbilityLogicalThinking,
+		AbilityCommunication,
+		AbilityProblemSolving,
+		AbilityCriticalThinking,
+		AbilityReflection,
+	}
+}
+
+// NormalizeAbilityDimension 将 Skill 名称或自然语言能力名映射为核心能力维度。
+func NormalizeAbilityDimension(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	switch {
+	case normalized == AbilityCriticalThinking || strings.Contains(normalized, "批判") || strings.Contains(normalized, "证据意识") || strings.Contains(normalized, "假设识别") || strings.Contains(normalized, "结论边界"):
+		return AbilityCriticalThinking
+	case normalized == AbilityLogicalThinking || strings.Contains(normalized, "逻辑") || strings.Contains(normalized, "推理") || strings.Contains(normalized, "论证") || strings.Contains(normalized, "结构完整") || strings.Contains(normalized, "前后一致"):
+		return AbilityLogicalThinking
+	case normalized == AbilityCommunication || normalized == "communication_training" || strings.Contains(normalized, "表达") || strings.Contains(normalized, "沟通") || strings.Contains(normalized, "交流") || strings.Contains(normalized, "对象意识") || strings.Contains(normalized, "回应与互动"):
+		return AbilityCommunication
+	case normalized == AbilityReflection || strings.Contains(normalized, "反思") || strings.Contains(normalized, "复盘") || strings.Contains(normalized, "自我觉察") || strings.Contains(normalized, "迁移意识") || strings.Contains(normalized, "策略调整"):
+		return AbilityReflection
+	case normalized == AbilityProblemSolving || strings.Contains(normalized, "问题解决") || strings.Contains(normalized, "解决问题") || strings.Contains(normalized, "问题界定") || strings.Contains(normalized, "策略选择") || strings.Contains(normalized, "执行规划") || strings.Contains(normalized, "结果验证") || strings.Contains(normalized, "理解与应用"):
+		return AbilityProblemSolving
+	default:
+		return ""
+	}
+}
+
+// AbilitySkillName 返回能力维度对应的现有 Skill 名称。
+func AbilitySkillName(ability string) string {
+	switch NormalizeAbilityDimension(ability) {
+	case AbilityLogicalThinking:
+		return "logical-thinking"
+	case AbilityCommunication:
+		return "communication-training"
+	case AbilityCriticalThinking:
+		return "critical-thinking"
+	case AbilityReflection:
+		return "reflection-training"
+	default:
+		return "problem-solving"
+	}
+}
+
+// AbilityGrowthRecord 记录一次训练前后的可追溯能力变化。
+type AbilityGrowthRecord struct {
+	SessionID    string             `json:"session_id"`
+	LearningGoal string             `json:"learning_goal"`
+	BeforeScores map[string]float64 `json:"before_scores,omitempty"`
+	AfterScores  map[string]float64 `json:"after_scores,omitempty"`
+	ScoreChanges map[string]float64 `json:"score_changes,omitempty"`
+	OverallScore float64            `json:"overall_score"`
+	TrainingTime time.Time          `json:"training_time"`
+}
+
+// StudentAbilityProfile 是跨训练持续维护的结构化学生能力画像，分数范围为 0 到 1。
+type StudentAbilityProfile struct {
+	StudentID        string                `json:"student_id"`
+	Summary          string                `json:"summary"`
+	AbilityScores    map[string]float64    `json:"ability_scores,omitempty"`
+	Strengths        []string              `json:"strengths,omitempty"`
+	Weaknesses       []string              `json:"weaknesses,omitempty"`
+	GrowthHistory    []AbilityGrowthRecord `json:"growth_history,omitempty"`
+	LastTrainingTime time.Time             `json:"last_training_time,omitempty"`
+}
+
+// TrainingState 能力训练过程状态。
+type TrainingState struct {
+	SessionID             string                 `json:"session_id"`
+	CurrentQuestion       int                    `json:"current_question"`                  // 当前第几题
+	TotalQuestions        int                    `json:"total_questions"`                   // 总题数
+	CurrentDifficulty     DifficultyLevel        `json:"current_difficulty"`                // 当前难度
+	ConsecutiveRight      int                    `json:"consecutive_right"`                 // 连续答对
+	ConsecutiveWrong      int                    `json:"consecutive_wrong"`                 // 连续答错
+	QAHistory             []QAPair               `json:"qa_history"`                        // 问答历史
+	StudentAbilityProfile *StudentAbilityProfile `json:"student_ability_profile,omitempty"` // 训练中动态更新的学生能力画像
 }
 
 // QAPair 单次问答记录
@@ -199,14 +290,17 @@ type QAPair struct {
 // 评估报告相关
 // ============================================================
 
-// EvaluationReport 教学能力训练评估报告
+// EvaluationReport 学生能力训练评估报告。
 type EvaluationReport struct {
 	SessionID       string             `json:"session_id"`
-	CandidateName   string             `json:"candidate_name"`
-	Position        string             `json:"position"`
+	StudentID       string             `json:"student_id"`
+	StudentName     string             `json:"student_name"`
+	Grade           string             `json:"grade,omitempty"`
+	Subject         string             `json:"subject,omitempty"`
+	LearningGoal    string             `json:"learning_goal"`
 	OverallScore    float64            `json:"overall_score"`    // 综合得分
 	OverallLevel    string             `json:"overall_level"`    // 综合评级（A/B/C/D）
-	DimensionScore  map[string]float64 `json:"dimension_score"`  // 各维度得分
+	AbilityScores   map[string]float64 `json:"ability_scores"`   // 各能力维度得分
 	TrainingMetrics map[string]float64 `json:"training_metrics"` // 由会话事实确定性计算的训练指标
 	Strengths       []string           `json:"strengths"`        // 表现优秀的方面
 	Weaknesses      []string           `json:"weaknesses"`       // 需要提升的方面
@@ -226,10 +320,10 @@ type QuestionReview struct {
 }
 
 // ============================================================
-// 教学能力提升计划相关
+// 学生能力提升计划相关
 // ============================================================
 
-// ReviewPlan 教学能力提升计划
+// ReviewPlan 学生能力提升计划
 type ReviewPlan struct {
 	SessionID string      `json:"session_id"`
 	WeakAreas []WeakArea  `json:"weak_areas"` // 薄弱领域
@@ -265,32 +359,33 @@ type Resource struct {
 // 会话管理
 // ============================================================
 
-// Session 面试会话
+// Session 能力训练会话。
 type Session struct {
-	ID             string             `json:"id"`
-	UserID         string             `json:"user_id"`
-	JDAnalysis     *JDAnalysis        `json:"jd_analysis"`
-	Resume         *Resume            `json:"resume"`
-	MatchResult    *ResumeMatchResult `json:"match_result"`
-	QuestionPlan   *QuestionPlan      `json:"question_plan"`
-	InterviewState *InterviewState    `json:"interview_state"`
-	Report         *EvaluationReport  `json:"report"`
-	ReviewPlan     *ReviewPlan        `json:"review_plan"`
-	Status         SessionStatus      `json:"status"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	ID                string             `json:"id"`
+	UserID            string             `json:"user_id"`
+	StudentID         string             `json:"student_id"`
+	AbilityStandard   *AbilityStandard   `json:"ability_standard"`
+	StudentProfile    *StudentProfile    `json:"student_profile"`
+	LearningDiagnosis *LearningDiagnosis `json:"learning_diagnosis"`
+	QuestionPlan      *QuestionPlan      `json:"question_plan"`
+	TrainingState     *TrainingState     `json:"training_state"`
+	Report            *EvaluationReport  `json:"report"`
+	ReviewPlan        *ReviewPlan        `json:"review_plan"`
+	Status            SessionStatus      `json:"status"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
 // SessionStatus 会话状态
 type SessionStatus string
 
 const (
-	StatusInit          SessionStatus = "init"           // 初始化
-	StatusJDAnalyzed    SessionStatus = "jd_analyzed"    // JD已分析
-	StatusResumeMatched SessionStatus = "resume_matched" // 简历已匹配
-	StatusPlanned       SessionStatus = "planned"        // 已出题
-	StatusInterviewing  SessionStatus = "interviewing"   // 面试中
-	StatusTerminated    SessionStatus = "terminated"     // 用户主动终止
-	StatusEvaluated     SessionStatus = "evaluated"      // 已评估
-	StatusCompleted     SessionStatus = "completed"      // 已完成
+	StatusInit                   SessionStatus = "init"                     // 初始化
+	StatusAbilityAnalyzed        SessionStatus = "ability_analyzed"         // 能力标准已分析
+	StatusStudentProfileAnalyzed SessionStatus = "student_profile_analyzed" // 学生画像已诊断
+	StatusPlanned                SessionStatus = "planned"                  // 已规划训练
+	StatusTraining               SessionStatus = "training"                 // 训练中
+	StatusTerminated             SessionStatus = "terminated"               // 用户主动终止
+	StatusEvaluated              SessionStatus = "evaluated"                // 已评估
+	StatusCompleted              SessionStatus = "completed"                // 已完成
 )

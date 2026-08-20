@@ -6,13 +6,38 @@
 // 客户端发送的消息
 export type ClientMessage =
   | { type: 'chat'; content: string }
-  | { type: 'start_training'; assessment: string; profile: string }
-  | { type: 'start_interview'; jd: string; resume: string } // 兼容旧服务端协议
+  | { type: 'start_training'; learning_goal: string; student_profile: string }
   | { type: 'answer'; content: string }
   | { type: 'quit_training' }
-  | { type: 'quit_interview' } // 兼容旧服务端协议
   | { type: 'upload_file'; filename: string; data: string }
   | { type: 'upload_questions'; filename: string; data: string }
+
+// LegacyClientMessage 仅用于旧调用方适配，不进入前端核心消息模型。
+export type LegacyClientMessage =
+  | { type: 'start_training'; assessment: string; profile: string }
+  | { type: 'start_interview'; jd: string; resume: string }
+  | { type: 'quit_interview' }
+
+export function adaptClientMessage(message: ClientMessage | LegacyClientMessage): ClientMessage {
+  if (message.type === 'start_training' && 'assessment' in message) {
+    return {
+      type: 'start_training',
+      learning_goal: message.assessment,
+      student_profile: message.profile,
+    }
+  }
+  if (message.type === 'start_interview') {
+    return {
+      type: 'start_training',
+      learning_goal: message.jd,
+      student_profile: message.resume,
+    }
+  }
+  if (message.type === 'quit_interview') {
+    return { type: 'quit_training' }
+  }
+  return message
+}
 
 // RAG 题库诊断结果
 export interface SkillCoverage {

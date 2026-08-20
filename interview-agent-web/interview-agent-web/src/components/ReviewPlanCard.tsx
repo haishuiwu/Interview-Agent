@@ -15,7 +15,7 @@ export function ReviewPlanCard({ content }: { content: string }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-purple-100 transition"
       >
-        <span className="font-medium text-purple-800">教学能力提升计划</span>
+        <span className="font-medium text-purple-800">学生能力提升计划</span>
         <span className="text-purple-600 text-sm">{expanded ? '收起' : '展开'}</span>
       </button>
       {expanded && (

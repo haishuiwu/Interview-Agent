@@ -15,7 +15,7 @@ export function Sidebar() {
     <div className="w-64 bg-gray-900 text-white flex flex-col h-screen">
       <div className="p-4 border-b border-gray-700">
         <h1 className="text-lg font-bold">师练 AI</h1>
-        <p className="text-xs text-gray-400 mt-1">教师教学能力训练系统</p>
+        <p className="text-xs text-gray-400 mt-1">学生能力提升系统</p>
       </div>
 
       <div className="p-3">

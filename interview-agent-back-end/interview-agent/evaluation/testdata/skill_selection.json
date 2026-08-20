@@ -1,0 +1,17 @@
+[
+  {"id":"skill-01","input":"我想做逻辑思维训练","expected_skill":"logical-thinking"},
+  {"id":"skill-02","input":"请帮我进行推理训练","expected_skill":"logical-thinking"},
+  {"id":"skill-03","input":"我的思路混乱，想梳理一下","expected_skill":"logical-thinking"},
+  {"id":"skill-04","input":"我想提升表达能力","expected_skill":"communication-training"},
+  {"id":"skill-05","input":"帮我练习口头表达","expected_skill":"communication-training"},
+  {"id":"skill-06","input":"我总是说不清楚自己的观点","expected_skill":"communication-training"},
+  {"id":"skill-07","input":"我想练习问题解决","expected_skill":"problem-solving"},
+  {"id":"skill-08","input":"遇到困难时怎样拆解问题","expected_skill":"problem-solving"},
+  {"id":"skill-09","input":"请带我做一次方案设计","expected_skill":"problem-solving"},
+  {"id":"skill-10","input":"我想训练批判性思维","expected_skill":"critical-thinking"},
+  {"id":"skill-11","input":"如何判断一条信息是否可信","expected_skill":"critical-thinking"},
+  {"id":"skill-12","input":"请带我做一次论据分析","expected_skill":"critical-thinking"},
+  {"id":"skill-13","input":"我想做一次学习复盘","expected_skill":"reflection-training"},
+  {"id":"skill-14","input":"帮我进行错误复盘","expected_skill":"reflection-training"},
+  {"id":"skill-15","input":"我需要总结反思最近的学习过程","expected_skill":"reflection-training"}
+]

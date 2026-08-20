@@ -1,8 +1,3 @@
-/**
- * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
- */
-
 package loader
 
 import (
@@ -44,7 +39,7 @@ type ParseError struct {
 	Reason string `json:"reason"` // 校验失败原因
 }
 
-const questionParserPrompt = `你是一名教师训练题库解析专家。请从以下文本中提取所有教师资格、教师招聘试讲答辩或教学能力训练题，并转换为结构化 JSON 格式。
+const questionParserPrompt = `你是一名学生能力训练题库解析专家。请从以下文本中提取逻辑思维、沟通表达、问题解决、批判性思维或反思迁移训练题，并转换为结构化 JSON 格式。
 
 ## 输入文本
 %s
@@ -55,8 +50,8 @@ const questionParserPrompt = `你是一名教师训练题库解析专家。请�
 
 [
   {
-    "content": "完整的教师训练问题或课堂情境任务",
-    "reference": "参考作答要点、教学依据或观察指标",
+    "content": "完整的学生能力训练问题或学习情境任务",
+    "reference": "参考思考路径、关键依据或观察指标",
     "difficulty": "easy 或 medium 或 hard",
     "type": "theory 或 practice 或 scenario",
     "skills": ["教学能力标签1", "教学能力标签2"]
@@ -67,10 +62,10 @@ const questionParserPrompt = `你是一名教师训练题库解析专家。请�
 
 1. difficulty 只能是以下三个值之一：easy、medium、hard。根据题目考察深度判断。
 2. type 只能是以下三个值之一：
-   - theory：教育理念、师德、课程标准、学科知识与学习评价
-   - practice：说课、试讲、备课、教研与真实教学经历复盘
-   - scenario：课堂管理、突发情况、家校沟通与差异化教学情境
-3. skills 必须是非空数组，填写该题诊断的教学能力（如 "学情分析"、"教学设计"、"课堂评价"、"家校沟通"）。
+   - theory：概念理解、逻辑关系、证据判断与方法原理
+   - practice：表达组织、解题过程、学习任务与行动方案
+   - scenario：真实学习、协作沟通、信息判断与迁移应用情境
+3. skills 必须是非空数组，填写该题训练的学生能力（如 "逻辑思维"、"沟通表达"、"问题解决"、"批判性思维"、"反思迁移"）。
 4. content 必须是完整的题目文本，不要截断。
 5. reference 必须完整照搬原文中的答案内容，不得改写、缩写或重新组织。如果原文没有答案，填空字符串 ""。
 6. 只输出 JSON 数组，不要输出任何其他文字。
@@ -174,11 +169,11 @@ func tryRepairJSONArray(content string) string {
 	// 从后往前找最后一个完整的 JSON 对象结尾 "}"
 	for i := len(content) - 1; i >= 0; i-- {
 		if content[i] == '}' {
-			candidate := strings.TrimRight(content[:i+1], ", \t\n\r") + "]"
+			repaired := strings.TrimRight(content[:i+1], ", \t\n\r") + "]"
 			// 确保以 [ 开头
-			start := strings.Index(candidate, "[")
+			start := strings.Index(repaired, "[")
 			if start >= 0 {
-				return candidate[start:]
+				return repaired[start:]
 			}
 			break
 		}

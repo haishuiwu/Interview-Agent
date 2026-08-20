@@ -3,7 +3,7 @@
  * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
  */
 
-// Package agent 实现 InterviewAgent 系统的各个 Agent
+// Package agent 实现学生能力提升系统的各个 Agent。
 package agent
 
 import (
@@ -17,61 +17,63 @@ import (
 	imodel "interview-agent/internal/model"
 )
 
-const jdAnalyzerPrompt = `你是一名教师招聘与教师发展标准分析专家。请分析用户提供的教师岗位要求、教师资格面试大纲或教学能力考核标准，提取可用于训练的能力要求。
+const abilityAnalyzerPrompt = `你是一名学习目标与能力标准分析专家。请分析用户提供的学习目标、课程标准、考试大纲或能力要求，提取可用于训练的能力标准。
 
-你的唯一任务是解析教师岗位要求、教师资格面试大纲或教学能力考核标准。请按照以下 JSON 格式输出分析结果（不要输出其他内容，只输出纯 JSON）：
+你的唯一任务是解析学习目标与能力标准。请按照以下 JSON 格式输出分析结果（不要输出其他内容，只输出纯 JSON）：
 
 {
-  "position": "目标教师岗位或考核名称",
-  "company": "学校、教育机构或考核组织（如有）",
-  "required_skills": [
-    {"name": "必须具备的教学能力", "category": "ethics/subject/pedagogy/classroom/assessment/communication/other", "importance": "must"}
+  "learning_goal": "本轮学习目标",
+  "grade": "学段或年级（如有）",
+  "subject": "学科或学习领域（如有）",
+  "standard_source": "课程、考试、培养方案或用户自定义目标（如有）",
+  "target_abilities": [
+    {"name": "需要掌握的核心能力", "category": "knowledge/application/problem_solving/communication/reflection/other", "importance": "must"}
   ],
-  "preferred_skills": [
-    {"name": "进阶或加分教学能力", "category": "ethics/subject/pedagogy/classroom/assessment/communication/other", "importance": "preferred"}
+  "extension_abilities": [
+    {"name": "进阶能力", "category": "knowledge/application/problem_solving/communication/reflection/other", "importance": "preferred"}
   ],
-  "experience_level": "pre_service/novice/experienced",
-  "responsibilities": ["教学或育人职责1", "职责2"],
+  "proficiency_level": "foundation/intermediate/advanced",
+  "learning_requirements": ["学习或实践要求1", "要求2"],
   "key_topics": ["本轮训练需要覆盖的能力方向1", "能力方向2"]
 }
 
 注意：
-1. required_skills 只记录原文明确要求的学科、教学、育人和沟通能力
-2. preferred_skills 记录原文中的进阶要求或加分能力
-3. experience_level 依据身份或年限判断；未说明时使用 pre_service
-4. key_topics 是可以通过结构化问答、说课试讲或课堂情境训练诊断的重点
-5. 不得补写原文未出现的学校、经历、证书或教学成果`
+1. target_abilities 只记录原文明确要求的知识、应用、问题解决、沟通或反思能力
+2. extension_abilities 记录原文中的进阶能力
+3. proficiency_level 依据目标难度判断；未说明时使用 foundation
+4. key_topics 必须是可以通过问答、练习或情境任务训练诊断的重点
+5. 不得补写原文未出现的经历、证书、成果或能力证据`
 
-// JDAnalyzer JD 分析 Agent，负责解析岗位描述并提取结构化信息
-type JDAnalyzer struct {
+// AbilityAnalyzer 负责解析学习目标并提取结构化能力标准。
+type AbilityAnalyzer struct {
 	chatModel model.ChatModel
 }
 
-// NewJDAnalyzer 创建 JD 分析 Agent
-func NewJDAnalyzer(chatModel model.ChatModel) *JDAnalyzer {
-	return &JDAnalyzer{chatModel: chatModel}
+// NewAbilityAnalyzer 创建能力标准分析 Agent。
+func NewAbilityAnalyzer(chatModel model.ChatModel) *AbilityAnalyzer {
+	return &AbilityAnalyzer{chatModel: chatModel}
 }
 
-// Analyze 分析 JD 文本，返回结构化的分析结果
-func (a *JDAnalyzer) Analyze(ctx context.Context, jdText string) (*imodel.JDAnalysis, error) {
+// Analyze 分析学习目标文本，返回结构化能力标准。
+func (a *AbilityAnalyzer) Analyze(ctx context.Context, standardText string) (*imodel.AbilityStandard, error) {
 	messages := []*schema.Message{
-		schema.SystemMessage(jdAnalyzerPrompt),
-		schema.UserMessage(fmt.Sprintf("请解析以下教师岗位要求或教学能力考核标准：\n\n%s", jdText)),
+		schema.SystemMessage(abilityAnalyzerPrompt),
+		schema.UserMessage(fmt.Sprintf("请解析以下学习目标与能力标准：\n\n%s", standardText)),
 	}
 
 	resp, err := a.chatModel.Generate(ctx, messages)
 	if err != nil {
-		return nil, fmt.Errorf("jd_analyzer: generate: %w", err)
+		return nil, fmt.Errorf("ability_analyzer: generate: %w", err)
 	}
 
 	// 解析 JSON 响应
-	result := &imodel.JDAnalysis{}
+	result := &imodel.AbilityStandard{}
 	content := extractJSON(resp.Content)
 	if err := json.Unmarshal([]byte(content), result); err != nil {
-		return nil, fmt.Errorf("jd_analyzer: parse response: %w\nraw: %s", err, resp.Content)
+		return nil, fmt.Errorf("ability_analyzer: parse response: %w\nraw: %s", err, resp.Content)
 	}
 
-	result.RawJD = jdText
+	result.RawText = standardText
 	return result, nil
 }
 

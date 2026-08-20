@@ -1,8 +1,3 @@
-/**
- * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
- */
-
 // Package skill 定义 Skill 技能系统的核心接口和数据类型
 // Skill 是介于 Tool（MCP 无状态工具）和 Agent（DAG 预编排流程）之间的能力层级：
 // 有状态、多轮交互、用户意图动态触发、可插拔
@@ -22,6 +17,9 @@ type Skill interface {
 	// Description 技能描述（用于帮助信息展示）
 	Description() string
 
+	// Definition 返回学生能力训练 Skill 的结构化定义。
+	Definition() TrainingSkillDefinition
+
 	// Match 判断用户输入是否触发该 Skill
 	Match(input string) bool
 
@@ -29,6 +27,16 @@ type Skill interface {
 	// input: 用户本轮输入
 	// state: 技能状态（首次调用传 nil，后续传上一轮返回的 state）
 	Handle(ctx context.Context, input string, state *SkillState) (*SkillResponse, error)
+}
+
+// TrainingSkillDefinition 描述一个学生能力训练 Skill 的教学设计。
+type TrainingSkillDefinition struct {
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	ApplicableScenarios  []string `json:"applicable_scenarios"`
+	TrainingGoals        []string `json:"training_goals"`
+	AgentBehaviorRules   []string `json:"agent_behavior_rules"`
+	EvaluationDimensions []string `json:"evaluation_dimensions"`
 }
 
 // SkillState Skill 的交互状态，跨轮次保持
@@ -42,10 +50,10 @@ type SkillState struct {
 
 // SkillResponse Skill 单轮交互的响应
 type SkillResponse struct {
-	Content    string     `json:"content"`     // 回复内容（展示给用户）
-	Done       bool       `json:"done"`        // 该 Skill 交互是否结束
-	NextPrompt string     `json:"next_prompt"` // 引导用户下一步输入的提示语
-	State      *SkillState `json:"state"`      // 更新后的状态（传给下一轮 Handle）
+	Content    string      `json:"content"`     // 回复内容（展示给用户）
+	Done       bool        `json:"done"`        // 该 Skill 交互是否结束
+	NextPrompt string      `json:"next_prompt"` // 引导用户下一步输入的提示语
+	State      *SkillState `json:"state"`       // 更新后的状态（传给下一轮 Handle）
 }
 
 // NewSkillState 创建一个新的 SkillState

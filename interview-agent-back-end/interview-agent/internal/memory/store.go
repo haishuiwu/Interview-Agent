@@ -13,12 +13,16 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	imodel "interview-agent/internal/model"
 )
 
 // Store 持久化存储接口
 type Store interface {
 	SaveProfile(ctx context.Context, profile *UserProfile) error
 	LoadProfile(ctx context.Context, userID string) (*UserProfile, error)
+	SaveAbilityProfile(ctx context.Context, profile *imodel.StudentAbilityProfile) error
+	LoadAbilityProfile(ctx context.Context, studentID string) (*imodel.StudentAbilityProfile, error)
 	SaveSession(ctx context.Context, sessionID string, data []byte, ttl time.Duration) error
 	LoadSession(ctx context.Context, sessionID string) ([]byte, error)
 }
@@ -35,6 +39,10 @@ func NewRedisStore(client *redis.Client) *RedisStore {
 
 func profileKey(userID string) string {
 	return fmt.Sprintf("interview:profile:%s", userID)
+}
+
+func abilityProfileKey(studentID string) string {
+	return fmt.Sprintf("student:ability_profile:%s", studentID)
 }
 
 func sessionKey(sessionID string) string {
@@ -67,6 +75,31 @@ func (s *RedisStore) LoadProfile(ctx context.Context, userID string) (*UserProfi
 	profile := &UserProfile{}
 	if err := json.Unmarshal(data, profile); err != nil {
 		return nil, fmt.Errorf("redis_store: unmarshal profile: %w", err)
+	}
+	return profile, nil
+}
+
+// SaveAbilityProfile 保存长期学生能力画像，不设置过期时间。
+func (s *RedisStore) SaveAbilityProfile(ctx context.Context, profile *imodel.StudentAbilityProfile) error {
+	data, err := json.Marshal(profile)
+	if err != nil {
+		return fmt.Errorf("redis_store: marshal ability profile: %w", err)
+	}
+	return s.client.Set(ctx, abilityProfileKey(profile.StudentID), data, 0).Err()
+}
+
+// LoadAbilityProfile 读取长期学生能力画像。
+func (s *RedisStore) LoadAbilityProfile(ctx context.Context, studentID string) (*imodel.StudentAbilityProfile, error) {
+	data, err := s.client.Get(ctx, abilityProfileKey(studentID)).Bytes()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("redis_store: load ability profile: %w", err)
+	}
+	profile := &imodel.StudentAbilityProfile{}
+	if err := json.Unmarshal(data, profile); err != nil {
+		return nil, fmt.Errorf("redis_store: unmarshal ability profile: %w", err)
 	}
 	return profile, nil
 }
@@ -141,6 +174,30 @@ func (s *MemoryStore) LoadProfile(_ context.Context, userID string) (*UserProfil
 		return nil, nil
 	}
 	profile := &UserProfile{}
+	return profile, json.Unmarshal(data, profile)
+}
+
+// SaveAbilityProfile 保存测试/开发环境的长期学生能力画像。
+func (s *MemoryStore) SaveAbilityProfile(_ context.Context, profile *imodel.StudentAbilityProfile) error {
+	data, err := json.Marshal(profile)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.sessions[abilityProfileKey(profile.StudentID)] = data
+	s.mu.Unlock()
+	return nil
+}
+
+// LoadAbilityProfile 读取测试/开发环境的长期学生能力画像。
+func (s *MemoryStore) LoadAbilityProfile(_ context.Context, studentID string) (*imodel.StudentAbilityProfile, error) {
+	s.mu.RLock()
+	data, ok := s.sessions[abilityProfileKey(studentID)]
+	s.mu.RUnlock()
+	if !ok {
+		return nil, nil
+	}
+	profile := &imodel.StudentAbilityProfile{}
 	return profile, json.Unmarshal(data, profile)
 }
 

@@ -11,12 +11,12 @@ import "strings"
 type Intent string
 
 const (
-	IntentStartInterview Intent = "start_interview" // 开始面试
-	IntentUploadResume   Intent = "upload_resume"   // 上传简历
-	IntentUploadJD       Intent = "upload_jd"       // 上传/输入 JD
-	IntentViewHistory    Intent = "view_history"    // 查看历史
-	IntentSkill          Intent = "skill"           // 触发 Skill 技能
-	IntentChat           Intent = "chat"            // 日常聊天
+	IntentStartTraining         Intent = "start_training"          // 开始训练
+	IntentUploadStudentProfile  Intent = "upload_student_profile"  // 上传学生画像
+	IntentUploadAbilityStandard Intent = "upload_ability_standard" // 上传/输入能力标准
+	IntentViewHistory           Intent = "view_history"            // 查看历史
+	IntentSkill                 Intent = "skill"                   // 触发 Skill 技能
+	IntentChat                  Intent = "chat"                    // 日常聊天
 )
 
 // IntentRouter 意图路由器，基于规则判断用户意图
@@ -28,22 +28,27 @@ func NewIntentRouter() *IntentRouter {
 	return &IntentRouter{}
 }
 
-// interviewTriggers 触发面试的关键词
-var interviewTriggers = []string{
-	"开始训练", "教学训练", "试讲训练", "教师面试", "结构化问答", "教学答辩",
+// trainingTriggers 触发能力训练的关键词。
+var trainingTriggers = []string{
+	"开始训练", "能力训练", "学习训练", "专项训练", "开始练习",
+}
+
+// legacyTrainingTriggers 只兼容历史自然语言入口。
+var legacyTrainingTriggers = []string{
+	"教学训练", "试讲训练", "教师面试", "结构化问答", "教学答辩",
 	"开始面试", "模拟面试", "开始模拟", "面试一下",
 	"start interview", "mock interview",
 	"我要面试", "开始吧", "来面试",
 }
 
-// resumeTriggers 上传简历的关键词
-var resumeTriggers = []string{
-	"教学档案", "教师档案", "授课经历", "简历", "resume", "我的简历",
+// studentProfileTriggers 识别学生画像文件。
+var studentProfileTriggers = []string{
+	"学生画像", "学习档案", "学习经历", "能力画像", "项目作品",
 }
 
-// jdTriggers 输入 JD 的关键词
-var jdTriggers = []string{
-	"考核标准", "面试大纲", "课程标准", "jd", "JD", "教师岗位", "岗位", "职位", "招聘",
+// legacyStudentProfileTriggers 只兼容历史自然语言入口。
+var legacyStudentProfileTriggers = []string{
+	"教学档案", "教师档案", "授课经历", "简历", "resume", "我的简历",
 }
 
 // historyTriggers 查看历史的关键词
@@ -52,33 +57,33 @@ var historyTriggers = []string{
 }
 
 // Route 根据用户输入和系统状态判断意图
-// isInterviewing: 当前是否在面试中（如果是，所有输入都当作面试回答）
-func (r *IntentRouter) Route(input string, isInterviewing bool) Intent {
-	// 面试进行中：所有输入都走面试流程
-	if isInterviewing {
-		return IntentStartInterview
+// isTraining: 当前是否在训练中（如果是，所有输入都当作训练回答）
+func (r *IntentRouter) Route(input string, isTraining bool) Intent {
+	// 训练进行中：所有输入都走训练流程
+	if isTraining {
+		return IntentStartTraining
 	}
 
 	trimmed := strings.TrimSpace(input)
 	lower := strings.ToLower(trimmed)
 
-	// 检查是否是文件路径（上传简历/JD）
+	// 检查是否是学生画像文件路径。
 	if isFilePath(trimmed) {
-		if containsAny(lower, resumeTriggers) {
-			return IntentUploadResume
+		if containsAny(lower, studentProfileTriggers) || containsAny(lower, legacyStudentProfileTriggers) {
+			return IntentUploadStudentProfile
 		}
-		// 文件默认当简历处理
-		return IntentUploadResume
+		// 保持原有行为：未标注用途的文件默认作为学生画像。
+		return IntentUploadStudentProfile
 	}
 
-	// 检查是否是 URL（JD 链接）
+	// URL 默认作为能力标准来源。
 	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
-		return IntentUploadJD
+		return IntentUploadAbilityStandard
 	}
 
 	// 关键词匹配
-	if containsAny(lower, interviewTriggers) {
-		return IntentStartInterview
+	if containsAny(lower, trainingTriggers) || containsAny(lower, legacyTrainingTriggers) {
+		return IntentStartTraining
 	}
 	if containsAny(lower, historyTriggers) {
 		return IntentViewHistory

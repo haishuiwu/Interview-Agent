@@ -1,0 +1,9 @@
+[
+  {"id":"tool-01","input":"我想提升自己的表达能力","expected_tools":["get_ability_profile","get_growth_history","search_training_case","recommend_training_task"]},
+  {"id":"tool-02","input":"帮我训练一下","expected_tools":["get_ability_profile","recommend_training_task"]},
+  {"id":"tool-03","input":"查看我最近一次能力报告","expected_tools":["get_ability_report"]},
+  {"id":"tool-04","input":"查询我的历史表达训练","expected_tools":["get_growth_history"]},
+  {"id":"tool-05","input":"找一个批判性思维训练案例","expected_tools":["search_training_case"]},
+  {"id":"tool-06","input":"查看我的当前能力画像","expected_tools":["get_ability_profile"]},
+  {"id":"tool-07","input":"训练已完成，请用真实评价更新能力画像","expected_tools":["update_ability_profile"]}
+]

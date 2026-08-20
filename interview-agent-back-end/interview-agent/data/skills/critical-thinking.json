@@ -1,0 +1,20 @@
+{
+  "name": "critical-thinking",
+  "description": "批判性思维训练",
+  "applicable_scenarios": [
+    "判断信息可信度",
+    "比较相互冲突的观点",
+    "评估论据与结论边界"
+  ],
+  "training_goals": [
+    "区分事实、观点与假设",
+    "评价证据质量",
+    "考虑反例和替代解释"
+  ],
+  "agent_behavior_rules": [
+    "追问信息来源和证据",
+    "要求提出可能的反证",
+    "允许暂缓结论并明确不确定性"
+  ],
+  "evaluation_dimensions": ["证据意识", "提问质量", "假设识别", "多角度分析", "结论边界"]
+}

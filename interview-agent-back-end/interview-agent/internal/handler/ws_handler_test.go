@@ -153,7 +153,7 @@ func TestBeginInterviewRejectsDuplicateStart(t *testing.T) {
 	ws, clientConn := newWSSessionTestConnection(t)
 	beginTestInterview(t, ws)
 
-	ws.handleStartInterview("another jd", "another resume")
+	ws.handleStartTraining("another learning goal", "another student profile")
 
 	if err := clientConn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatalf("set websocket read deadline: %v", err)
@@ -164,6 +164,56 @@ func TestBeginInterviewRejectsDuplicateStart(t *testing.T) {
 	}
 	if msg.Code != "INTERVIEW_ALREADY_RUNNING" {
 		t.Fatalf("response code = %q, want INTERVIEW_ALREADY_RUNNING", msg.Code)
+	}
+}
+
+func TestAdaptTrainingInput(t *testing.T) {
+	tests := []struct {
+		name        string
+		msg         ClientMsg
+		wantGoal    string
+		wantProfile string
+	}{
+		{
+			name: "canonical fields take precedence",
+			msg: ClientMsg{
+				LearningGoal:   "new goal",
+				StudentProfile: "new profile",
+				LegacyTrainingInputDTO: LegacyTrainingInputDTO{
+					Assessment: "legacy assessment",
+					Profile:    "legacy profile",
+				},
+			},
+			wantGoal:    "new goal",
+			wantProfile: "new profile",
+		},
+		{
+			name: "transition fields are adapted",
+			msg: ClientMsg{LegacyTrainingInputDTO: LegacyTrainingInputDTO{
+				Assessment: "assessment",
+				Profile:    "profile",
+			}},
+			wantGoal:    "assessment",
+			wantProfile: "profile",
+		},
+		{
+			name: "oldest fields are adapted",
+			msg: ClientMsg{LegacyTrainingInputDTO: LegacyTrainingInputDTO{
+				JD:     "legacy goal",
+				Resume: "legacy student profile",
+			}},
+			wantGoal:    "legacy goal",
+			wantProfile: "legacy student profile",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			goal, profile := adaptTrainingInput(tt.msg)
+			if goal != tt.wantGoal || profile != tt.wantProfile {
+				t.Fatalf("adaptTrainingInput() = (%q, %q), want (%q, %q)", goal, profile, tt.wantGoal, tt.wantProfile)
+			}
+		})
 	}
 }
 

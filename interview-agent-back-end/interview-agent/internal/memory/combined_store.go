@@ -9,6 +9,8 @@ import (
 	"context"
 	"log"
 	"time"
+
+	imodel "interview-agent/internal/model"
 )
 
 // CombinedStore 组合存储：Redis 缓存 + MySQL 持久化
@@ -59,6 +61,33 @@ func (s *CombinedStore) LoadProfile(ctx context.Context, userID string) (*UserPr
 		log.Printf("[CombinedStore] Redis 回填 profile 失败: %v", err)
 	}
 
+	return profile, nil
+}
+
+// SaveAbilityProfile 双写完整能力画像到 MySQL 与 Redis。
+func (s *CombinedStore) SaveAbilityProfile(ctx context.Context, profile *imodel.StudentAbilityProfile) error {
+	if err := s.mysql.SaveAbilityProfile(ctx, profile); err != nil {
+		return err
+	}
+	if err := s.redis.SaveAbilityProfile(ctx, profile); err != nil {
+		log.Printf("[CombinedStore] Redis 写入能力画像失败（不影响主流程）: %v", err)
+	}
+	return nil
+}
+
+// LoadAbilityProfile 优先读取 Redis，未命中时回落 MySQL 并回填缓存。
+func (s *CombinedStore) LoadAbilityProfile(ctx context.Context, studentID string) (*imodel.StudentAbilityProfile, error) {
+	profile, err := s.redis.LoadAbilityProfile(ctx, studentID)
+	if err == nil && profile != nil {
+		return profile, nil
+	}
+	profile, err = s.mysql.LoadAbilityProfile(ctx, studentID)
+	if err != nil || profile == nil {
+		return profile, err
+	}
+	if err := s.redis.SaveAbilityProfile(ctx, profile); err != nil {
+		log.Printf("[CombinedStore] Redis 回填能力画像失败: %v", err)
+	}
 	return profile, nil
 }
 

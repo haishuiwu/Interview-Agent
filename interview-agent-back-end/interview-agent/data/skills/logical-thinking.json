@@ -1,0 +1,20 @@
+{
+  "name": "logical-thinking",
+  "description": "逻辑思维训练",
+  "applicable_scenarios": [
+    "梳理复杂信息与因果关系",
+    "检查论证链条",
+    "解释解题或判断过程"
+  ],
+  "training_goals": [
+    "区分前提、推理与结论",
+    "形成有顺序的推理链",
+    "发现矛盾、跳步与隐藏假设"
+  ],
+  "agent_behavior_rules": [
+    "要求学生说出每一步依据",
+    "用反例或条件变化检验推理",
+    "只提示断点，不代替学生完成推导"
+  ],
+  "evaluation_dimensions": ["结构完整性", "推理有效性", "前后一致性", "依据充分性"]
+}

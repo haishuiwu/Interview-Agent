@@ -8,7 +8,7 @@ import (
 )
 
 func TestCalculateTrainingMetricsUsesSessionFacts(t *testing.T) {
-	state := &imodel.InterviewState{
+	state := &imodel.TrainingState{
 		TotalQuestions: 4,
 		QAHistory: []imodel.QAPair{
 			{
@@ -32,11 +32,29 @@ func TestCalculateTrainingMetricsUsesSessionFacts(t *testing.T) {
 }
 
 func TestCalculateTrainingMetricsHandlesEmptySession(t *testing.T) {
-	metrics := calculateTrainingMetrics(&imodel.InterviewState{})
+	metrics := calculateTrainingMetrics(&imodel.TrainingState{})
 	for key, value := range metrics {
 		if value != 0 {
 			t.Fatalf("metric %s = %v, want 0", key, value)
 		}
+	}
+}
+
+func TestCalculateFinalAbilityScoresUsesQAHistory(t *testing.T) {
+	state := &imodel.TrainingState{QAHistory: []imodel.QAPair{
+		{Question: imodel.PlannedQuestion{Skills: []string{"communication-training"}}, Score: 55},
+		{Question: imodel.PlannedQuestion{Skills: []string{"表达清晰度"}}, Score: 75},
+		{Question: imodel.PlannedQuestion{Skills: []string{"logical-thinking"}}, Score: 80},
+	}}
+
+	scores, overall := calculateFinalAbilityScores(state)
+	assertMetric(t, scores, imodel.AbilityCommunication, 65)
+	assertMetric(t, scores, imodel.AbilityLogicalThinking, 80)
+	if math.Abs(overall-70) > 0.001 {
+		t.Fatalf("overall = %v, want 70", overall)
+	}
+	if got := abilityLevel(overall); got != "B" {
+		t.Fatalf("abilityLevel(%v) = %q, want B", overall, got)
 	}
 }
 

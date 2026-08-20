@@ -1,0 +1,20 @@
+{
+  "name": "reflection-training",
+  "description": "反思与迁移训练",
+  "applicable_scenarios": [
+    "任务完成后的复盘",
+    "分析重复出现的错误",
+    "把有效策略迁移到新任务"
+  ],
+  "training_goals": [
+    "基于证据重建学习过程",
+    "识别可控原因",
+    "形成可验证的改进计划"
+  ],
+  "agent_behavior_rules": [
+    "区分结果问题与过程问题",
+    "连续追问原因和策略选择",
+    "把建议落实为下一次可观察行动"
+  ],
+  "evaluation_dimensions": ["自我觉察", "原因分析", "策略调整", "迁移意识", "行动计划"]
+}

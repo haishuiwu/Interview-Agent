@@ -86,11 +86,11 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
   } = useInterviewSpeech(token, { onDraftReady: handleDraftReady })
   const [attachedFile, setAttachedFile] = useState<{ name: string; data: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [showInterviewSetup, setShowInterviewSetup] = useState(false)
-  const [jdText, setJdText] = useState('')
-  const [resumeText, setResumeText] = useState('')
-  const [jdFile, setJdFile] = useState<{ name: string; data: string } | null>(null)
-  const [resumeFile, setResumeFile] = useState<{ name: string; data: string } | null>(null)
+  const [showTrainingSetup, setShowTrainingSetup] = useState(false)
+  const [learningGoalText, setLearningGoalText] = useState('')
+  const [studentProfileText, setStudentProfileText] = useState('')
+  const [learningGoalFile, setLearningGoalFile] = useState<{ name: string; data: string } | null>(null)
+  const [studentProfileFile, setStudentProfileFile] = useState<{ name: string; data: string } | null>(null)
   const questionFileRef = useRef<HTMLInputElement>(null)
   const [uploadingQuestions, setUploadingQuestions] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -193,30 +193,34 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
     e.target.value = ''
   }
 
-  const handleStartInterview = () => {
-    const jd = jdFile ? `[FILE:${jdFile.name}]${jdFile.data}` : jdText
-    const resume = resumeFile ? `[FILE:${resumeFile.name}]${resumeFile.data}` : resumeText
-    if (!jd || !resume) return
+  const handleStartTraining = () => {
+    const learningGoal = learningGoalFile
+      ? `[FILE:${learningGoalFile.name}]${learningGoalFile.data}`
+      : learningGoalText
+    const studentProfile = studentProfileFile
+      ? `[FILE:${studentProfileFile.name}]${studentProfileFile.data}`
+      : studentProfileText
+    if (!learningGoal || !studentProfile) return
 
     if (speechEnabled) void unlockAudio().catch(() => undefined)
     setSubmittedQuestionId(null)
-    send({ type: 'start_training', assessment: jd, profile: resume })
+    send({ type: 'start_training', learning_goal: learningGoal, student_profile: studentProfile })
     useChatStore.getState().setInterviewing(true)
     useChatStore.getState().addMessage({
       id: String(Date.now()),
       role: 'user',
-      content: '开始教师教学能力训练',
+      content: '开始学生能力提升训练',
       messageType: 'text',
       timestamp: Date.now(),
     })
-    setShowInterviewSetup(false)
-    setJdText('')
-    setResumeText('')
-    setJdFile(null)
-    setResumeFile(null)
+    setShowTrainingSetup(false)
+    setLearningGoalText('')
+    setStudentProfileText('')
+    setLearningGoalFile(null)
+    setStudentProfileFile(null)
   }
 
-  const handleQuitInterview = () => {
+  const handleQuitTraining = () => {
     skipSpeaking()
     cancelRecording()
     send({ type: 'quit_training' })
@@ -231,7 +235,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <p className="text-lg mb-2">师练 AI</p>
-            <p className="text-sm">面向教师资格、试讲答辩与青年教师发展的教学能力训练</p>
+            <p className="text-sm">围绕学习目标、学生画像与能力标准开展个性化训练</p>
           </div>
         )}
         {messages.map((msg) => (
@@ -240,35 +244,35 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* 教师训练准备面板 */}
-      {showInterviewSetup && (
+      {/* 学生能力训练准备面板 */}
+      {showTrainingSetup && (
         <div className="px-4 py-4 border-t bg-gray-50">
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">目标岗位或考核标准</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">学习目标与能力标准</label>
               <FileUpload
-                label="上传教师岗位要求、面试大纲或校本考核标准"
+                label="上传课程标准、考试大纲或能力要求"
                 accept=".pdf,.txt,.docx,.md"
-                onFileLoaded={(name, data) => setJdFile({ name, data })}
+                onFileLoaded={(name, data) => setLearningGoalFile({ name, data })}
               />
               <textarea
-                value={jdText}
-                onChange={(e) => setJdText(e.target.value)}
-                placeholder="例如：小学数学教师资格面试；重点考查教学设计、试讲与答辩……"
+                value={learningGoalText}
+                onChange={(e) => setLearningGoalText(e.target.value)}
+                placeholder="例如：掌握 Go 并发编程；重点训练原理理解、实践应用与问题分析……"
                 rows={4}
                 className="mt-2 w-full border rounded-lg p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">教学档案</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">学生画像</label>
               <FileUpload
-                label="上传教师简历或教学档案（PDF/DOCX）"
+                label="上传学习经历、项目作品或能力画像（PDF/DOCX）"
                 accept=".pdf,.txt,.docx"
-                onFileLoaded={(name, data) => setResumeFile({ name, data })}
+                onFileLoaded={(name, data) => setStudentProfileFile({ name, data })}
               />
               <textarea
-                value={resumeText}
-                onChange={(e) => setResumeText(e.target.value)}
+                value={studentProfileText}
+                onChange={(e) => setStudentProfileText(e.target.value)}
                 placeholder="请填写学段、学科、授课/实习经历、试讲或教研经历；暂无经历可写‘师范生，尚无正式授课经历’。"
                 rows={4}
                 className="mt-2 w-full border rounded-lg p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -292,14 +296,14 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
           )}
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => setShowInterviewSetup(false)}
+              onClick={() => setShowTrainingSetup(false)}
               className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg"
             >
               取消
             </button>
             <button
-              onClick={handleStartInterview}
-              disabled={(!jdText && !jdFile) || (!resumeText && !resumeFile)}
+              onClick={handleStartTraining}
+              disabled={(!learningGoalText && !learningGoalFile) || (!studentProfileText && !studentProfileFile)}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               开始训练
@@ -422,7 +426,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
           {!isInterviewing && (
             <>
               <button
-                onClick={() => setShowInterviewSetup(!showInterviewSetup)}
+                onClick={() => setShowTrainingSetup(!showTrainingSetup)}
                 className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap"
               >
                 开始训练
@@ -443,8 +447,8 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
                   {uploadingQuestions ? '解析中...' : '上传题库'}
                 </button>
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                  <p className="font-medium mb-1">上传教师训练题库</p>
-                  <p>支持教师资格题、试讲答辩题与课堂情境题，系统自动解析入库。</p>
+                  <p className="font-medium mb-1">上传能力训练题库</p>
+                  <p>支持知识理解、实践应用与综合情境题，系统自动解析入库。</p>
                   <p className="mt-1 text-gray-300">• 不同文件名 → 追加到知识库</p>
                   <p className="text-gray-300">• 同文件名重传 → 自动更新该题库</p>
                   <p className="text-gray-300">• 相同文件内容 → 自动跳过</p>
@@ -455,7 +459,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
           )}
           {isInterviewing && (
             <button
-              onClick={handleQuitInterview}
+              onClick={handleQuitTraining}
               className="px-3 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 whitespace-nowrap"
             >
               终止训练
@@ -520,7 +524,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
               setInput(e.target.value)
             }}
             onKeyDown={handleKeyDown}
-            placeholder={isInterviewing ? '说明你的教学判断、实施步骤和依据...' : '咨询教学问题，或点击“开始训练”进入完整训练...'}
+            placeholder={isInterviewing ? '说明你的判断、解题步骤和依据...' : '咨询学习问题，或点击“开始训练”进入完整训练...'}
             rows={1}
             className="flex-1 border rounded-xl px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
           />

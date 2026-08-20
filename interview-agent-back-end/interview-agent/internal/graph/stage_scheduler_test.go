@@ -17,7 +17,7 @@ func qt(typ, difficulty string) imodel.PlannedQuestion {
 func realAdjust() adjustFunc {
 	planner := agent.NewQuestionPlanner(nil)
 	return func(cur imodel.DifficultyLevel, consecRight, consecWrong int) imodel.DifficultyLevel {
-		return planner.AdjustDifficulty(&imodel.InterviewState{
+		return planner.AdjustDifficulty(&imodel.TrainingState{
 			CurrentDifficulty: cur,
 			ConsecutiveRight:  consecRight,
 			ConsecutiveWrong:  consecWrong,

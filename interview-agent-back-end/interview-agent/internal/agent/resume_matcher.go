@@ -16,83 +16,83 @@ import (
 	imodel "interview-agent/internal/model"
 )
 
-const resumeMatcherPrompt = `你是一名教师发展诊断专家。请将学员的教学档案与目标教师岗位、教师资格面试大纲或教学能力考核标准进行匹配分析。
+const studentProfileAnalyzerPrompt = `你是一名学生能力发展诊断专家。请将学生画像与学习目标、课程标准或能力标准进行诊断分析。
 
-这里的匹配不是给出录用结论，而是建立训练起点：识别已有教学证据、待验证能力和后续训练重点。
+诊断用于建立训练起点：识别已有能力证据、待验证能力和后续训练重点。
 
 请按照以下 JSON 格式输出匹配结果（不要输出其他内容，只输出纯 JSON）：
 
 {
   "overall_score": 75.0,
-  "skill_match": [
+  "ability_assessments": [
     {
-      "skill_name": "教学能力名称",
-      "required": true,
-      "matched": true,
-      "match_score": 80.0,
-      "evidence": "从教学档案中找到的事实证据"
+      "ability_name": "能力名称",
+      "target": true,
+      "demonstrated": true,
+      "score": 80.0,
+      "evidence": "从学生画像中找到的事实证据"
     }
   ],
+  "ability_scores": {"能力名称": 80.0},
   "strengths": ["优势1", "优势2"],
-  "weaknesses": ["薄弱点1", "薄弱点2"],
+  "weaknesses": ["待提升能力1", "待提升能力2"],
   "focus_areas": ["需要重点训练或验证的方向1", "需要重点训练或验证的方向2"],
-  "resume_gaps": ["教学档案中缺少证据、需要通过训练验证的能力1"]
+  "evidence_gaps": ["学生画像中缺少证据、需要通过训练验证的能力1"]
 }
 
 评分标准：
-- overall_score: 0-100 分，仅表示当前教学档案与目标标准的证据匹配度，不代表录用概率
-- skill_match: 逐项分析学科素养、教学设计、课堂实施、班级管理、沟通反思等要求
-- strengths: 已有事实能够支撑的教学优势
-- weaknesses: 证据不足或需要训练的能力，不对人格和职业适配作判断
+- overall_score: 0-100 分，仅表示当前学生画像与能力标准的证据覆盖度
+- ability_assessments: 逐项分析知识掌握、理解应用、问题解决、沟通表达和反思迁移等能力
+- ability_scores: 按能力名称给出当前证据分数
+- strengths: 已有事实能够支撑的能力优势
+- weaknesses: 证据不足或需要训练的能力，不对人格作判断
 - focus_areas: 后续训练应重点覆盖的方向
-- resume_gaps: 教学档案中需要通过情境问答、试讲或答辩进一步验证的部分`
+- evidence_gaps: 学生画像中需要通过问答、练习或情境任务进一步验证的部分`
 
-// ResumeMatcher 简历匹配 Agent，负责分析简历与 JD 的匹配度
-type ResumeMatcher struct {
+// StudentProfileAnalyzer 根据能力标准诊断学生画像。
+type StudentProfileAnalyzer struct {
 	chatModel model.ChatModel
 }
 
-// NewResumeMatcher 创建简历匹配 Agent
-func NewResumeMatcher(chatModel model.ChatModel) *ResumeMatcher {
-	return &ResumeMatcher{chatModel: chatModel}
+// NewStudentProfileAnalyzer 创建学生画像分析 Agent。
+func NewStudentProfileAnalyzer(chatModel model.ChatModel) *StudentProfileAnalyzer {
+	return &StudentProfileAnalyzer{chatModel: chatModel}
 }
 
-// Match 分析简历与 JD 的匹配度
-func (m *ResumeMatcher) Match(ctx context.Context, jdAnalysis *imodel.JDAnalysis, resume *imodel.Resume) (*imodel.ResumeMatchResult, error) {
-	// 构造 JD 分析摘要
-	jdSummary := formatJDForMatching(jdAnalysis)
-	resumeSummary := formatResumeForMatching(resume)
+// Analyze 根据能力标准分析学生画像并形成学习诊断。
+func (a *StudentProfileAnalyzer) Analyze(ctx context.Context, standard *imodel.AbilityStandard, profile *imodel.StudentProfile) (*imodel.LearningDiagnosis, error) {
+	standardSummary := formatAbilityStandardForDiagnosis(standard)
+	profileSummary := formatStudentProfileForDiagnosis(profile)
 
 	messages := []*schema.Message{
-		schema.SystemMessage(resumeMatcherPrompt),
-		schema.UserMessage(fmt.Sprintf("## 目标教师岗位或考核标准\n\n%s\n\n## 学员教学档案\n\n%s", jdSummary, resumeSummary)),
+		schema.SystemMessage(studentProfileAnalyzerPrompt),
+		schema.UserMessage(fmt.Sprintf("## 学习目标与能力标准\n\n%s\n\n## 学生画像\n\n%s", standardSummary, profileSummary)),
 	}
 
-	resp, err := m.chatModel.Generate(ctx, messages)
+	resp, err := a.chatModel.Generate(ctx, messages)
 	if err != nil {
-		return nil, fmt.Errorf("resume_matcher: generate: %w", err)
+		return nil, fmt.Errorf("student_profile_analyzer: generate: %w", err)
 	}
 
-	result := &imodel.ResumeMatchResult{}
+	result := &imodel.LearningDiagnosis{}
 	content := extractJSON(resp.Content)
 	if err := json.Unmarshal([]byte(content), result); err != nil {
-		return nil, fmt.Errorf("resume_matcher: parse response: %w\nraw: %s", err, resp.Content)
+		return nil, fmt.Errorf("student_profile_analyzer: parse response: %w\nraw: %s", err, resp.Content)
 	}
+	result.StudentID = profile.StudentID
+	result.LearningGoal = standard.LearningGoal
 
 	return result, nil
 }
 
-// formatJDForMatching 将 JD 分析结果格式化为便于匹配的文本
-func formatJDForMatching(jd *imodel.JDAnalysis) string {
-	data, _ := json.MarshalIndent(jd, "", "  ")
+// formatAbilityStandardForDiagnosis 将能力标准格式化为诊断上下文。
+func formatAbilityStandardForDiagnosis(standard *imodel.AbilityStandard) string {
+	data, _ := json.MarshalIndent(standard, "", "  ")
 	return string(data)
 }
 
-// formatResumeForMatching 将简历格式化为便于匹配的文本
-func formatResumeForMatching(resume *imodel.Resume) string {
-	if resume.RawText != "" {
-		return resume.RawText
-	}
-	data, _ := json.MarshalIndent(resume, "", "  ")
+// formatStudentProfileForDiagnosis 将学生画像格式化为诊断上下文。
+func formatStudentProfileForDiagnosis(profile *imodel.StudentProfile) string {
+	data, _ := json.MarshalIndent(profile, "", "  ")
 	return string(data)
 }
