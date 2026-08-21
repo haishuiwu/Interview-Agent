@@ -1,173 +1,141 @@
-# StudentCoach：学生能力提升 Agent
+# StudentCoach
 
-StudentCoach 是一个面向长期成长的学生能力训练系统。它会结合学习目标、学生画像与历史训练记录选择训练方式，通过任务、追问和反馈发现能力问题，并在训练结束后持续更新学生能力画像。
+面向学生长期成长的 AI 能力训练教练。
 
-系统聚焦训练与成长，不替代教师评价，也不直接给出升学、招聘或录用结论。
+StudentCoach 根据学生的学习目标、当前能力和历史训练记录组织个性化训练。它通过任务、追问和反馈帮助学生发现问题，并在每轮训练后更新能力画像，让下一次训练能够从真实成长状态继续。
+
+## 项目价值
+
+多数学习助手只回答当前问题，难以判断学生长期缺什么、练过什么、下一步应该练什么。StudentCoach 将一次对话扩展为持续成长闭环：
+
+- 训练前了解目标和已有能力；
+- 训练中根据表现调整任务、追问方向和难度；
+- 训练后生成有依据的能力评价与成长建议；
+- 下一次训练读取历史画像，优先训练当前短板。
+
+系统用于能力训练和形成性反馈，不替代教师评价，也不作升学、招聘或录用决策。
+
+## 适用场景
+
+- 学生希望提升表达能力，但不知道问题出在结构、论据还是沟通方式；
+- 学生面对开放问题时缺少分析路径，需要练习拆解、方案设计与验证；
+- 学生希望训练逻辑思维、批判性思维或复盘能力；
+- 教师或学习产品需要为学生提供可持续、可追踪的个性化训练。
 
 ## 核心能力
 
-- **Eino Graph**：保持既有拓扑，串联能力标准分析、学生画像分析、训练规划、训练对话、评价和成长规划。
-- **StudentCoach**：以 AI 能力训练教练的方式了解目标、选择训练方式、追问关键问题并给出成长建议。
-- **五类训练 Skill**：逻辑思维、表达训练、问题解决、批判性思维和反思训练。
-- **教育 Tool Calling**：通过统一 Registry 获取能力画像、成长历史和评价报告，检索案例、推荐任务并保存成长结果。
-- **长期能力画像**：Memory 跨轮维护五维能力分、优势、短板、成长历史和最近训练时间。
-- **RAG**：Milvus 向量检索与 BM25 关键词检索结合，为训练任务提供案例。
-- **实时交互**：保留 WebSocket、流式响应、TTS 和 ASR；语音能力默认关闭。
-- **MCP**：保留现有网页与 GitHub 能力，按具体训练场景使用。
-- **离线评测**：使用 mock LLM 验证 Skill 选择、Tool 调用、能力诊断和成长闭环，不依赖真实模型 API。
+### 个性化训练
 
-## 能力维度
+StudentCoach 先理解学习目标，再结合学生画像选择训练方式。目标不明确时，系统会根据历史能力短板推荐优先训练方向。
 
-StudentCoach 当前持续跟踪以下五个维度，分数范围为 0 到 1：
+### 五维能力画像
 
-| 字段 | 能力 |
+系统持续维护以下能力：
+
+| 能力维度 | 关注点 |
 |---|---|
-| `logical_thinking` | 逻辑思维 |
-| `communication` | 沟通与结构化表达 |
-| `problem_solving` | 问题分析与解决 |
-| `critical_thinking` | 证据判断与批判性思维 |
-| `reflection` | 复盘与迁移 |
+| 逻辑思维 | 关系识别、推理过程与结论一致性 |
+| 沟通表达 | 信息完整性、结构清晰度与受众意识 |
+| 问题解决 | 问题定义、方案设计、验证与迭代 |
+| 批判性思维 | 证据判断、假设识别与多角度比较 |
+| 反思能力 | 复盘归因、方法总结与迁移应用 |
 
-## 训练与成长闭环
+能力画像同时记录优势、短板、成长历史和最近训练时间。
 
-```text
-学习目标
-  → AbilityAnalyzer：形成能力标准
-  → StudentProfileAnalyzer：分析学生画像与学习差距
-  → QuestionPlanner：结合画像、Skill 与 RAG 规划任务
-  → StudentCoach：训练、追问与即时反馈
-  → AbilityEvaluator：生成评价依据，Go 聚合最终分数
-  → StudentGrowthService：更新 StudentAbilityProfile 并保存 GrowthRecord
-  → GrowthPlanner：生成下一步成长计划
-```
+### 教练式对话
 
-下一次训练开始时，StudentCoach 会读取已有能力画像。若学生只说“帮我训练一下”，系统会优先选择当前较弱的能力，而不是随机选择 Skill；画像也会影响任务推荐和难度。
+StudentCoach 不模拟面试官。它会先了解学生目标，根据表现继续追问，帮助学生暴露思考过程，并在关键节点提供具体反馈和成长建议。
 
-大模型只负责分析表现和提供评价依据。能力分聚合、画像更新和成长记录保存由 Go Service 控制，LLM 不直接决定最终分数。
+### 可信评价
 
-## 学生能力画像
+大模型负责分析学生表现并给出评价依据，最终能力分、能力变化和成长记录由 Go 服务聚合与保存，避免让模型直接决定长期分数。
 
-```json
-{
-  "student_id": "student_001",
-  "summary": "逻辑基础稳定，需要加强结构化表达和方案验证。",
-  "ability_scores": {
-    "logical_thinking": 0.78,
-    "communication": 0.65,
-    "problem_solving": 0.55,
-    "critical_thinking": 0.61,
-    "reflection": 0.58
-  },
-  "strengths": ["能识别主要因果关系"],
-  "weaknesses": ["缺少结构化表达", "验证方案意识不足"],
-  "growth_history": [],
-  "last_training_time": "2026-08-21T10:00:00+08:00"
-}
-```
+### 训练资源与长期记忆
 
-## Skill 与 Tool
+系统通过 RAG 检索适合当前短板的训练案例，通过统一工具注册中心读取学生画像、成长历史和最近评价。Skill 只负责训练策略，不直接访问数据库。
 
-内置训练 Skill：
+## 一次训练如何进行
 
-- `logical-thinking`
-- `communication-training`
-- `problem-solving`
-- `critical-thinking`
-- `reflection-training`
+1. 学生说明学习目标，或提出通用训练请求。
+2. 系统读取学生画像和历史训练记录。
+3. 能力分析器形成目标能力标准，学生画像分析器识别当前差距。
+4. 训练规划器结合 Skill、RAG 案例和难度生成任务。
+5. StudentCoach 组织练习，并通过追问发现能力问题。
+6. 能力评价器输出评价依据，Go 服务聚合本轮结果。
+7. 系统更新学生能力画像、保存成长记录并生成下一步计划。
 
-统一 Tool Registry 注册：
+## 技术组成
 
-- `get_student_profile`
-- `get_ability_profile`
-- `get_growth_history`
-- `get_ability_report`
-- `search_training_case`
-- `recommend_training_task`
-- `update_ability_profile`
-- `save_growth_record`
+| 层次 | 主要技术与职责 |
+|---|---|
+| 前端 | React、TypeScript、Vite，提供文字、语音和报告交互 |
+| 服务端 | Go，负责业务规则、认证、评价聚合和数据服务 |
+| Agent 编排 | Eino Graph，保持既有训练流程拓扑 |
+| 训练策略 | 五类学生能力训练 Skill |
+| 数据工具 | 统一 Tool Registry，由 Agent 按意图调用 |
+| 检索 | Milvus、BM25、融合与重排 |
+| 记忆 | Redis 与 MySQL，维护会话和长期能力画像 |
+| 实时交互 | WebSocket、流式响应、TTS 与 ASR |
+| 扩展能力 | 保留现有 MCP 网页与 GitHub 能力 |
+| 自动评测 | mock LLM 驱动的离线 Evaluation Benchmark |
 
-Skill 只定义训练策略，不直接访问数据库；所有数据能力通过 Tool 调用，成长与评价业务规则仍由 `StudentGrowthService` 等 Go Service 执行。
+## 快速开始
 
-## Evaluation Benchmark
+### 环境要求
 
-`interview-agent-back-end/interview-agent/evaluation/` 提供完全离线的自动评测：
+- Go 1.26.1，或启用 Go 自动工具链；
+- Node.js 20.19 以上或 22.12 以上；
+- npm；
+- Docker Compose；
+- 通义千问 DashScope API Key。
 
-| 指标 | 样例 | 当前基线 |
+### 启动服务
+
+1. 进入 interview-agent-back-end/interview-agent。
+2. 将 .env.example 复制为 .env，并填写 DASHSCOPE_API_KEY。
+3. 运行 docker compose up -d，启动 Milvus、Redis 和 MySQL 等依赖。
+4. 运行 go run cmd/main.go web，后端默认监听 9090 端口。
+5. 进入 interview-agent-web/interview-agent-web。
+6. 运行 npm install，再运行 npm run dev。
+7. 在浏览器打开 http://localhost:5173。
+
+语音功能默认关闭；需要启用时，请先阅读后端环境变量模板中的安全说明。
+
+## 自动评测
+
+项目提供完全离线的 Evaluation Benchmark，使用 mock LLM 验证核心编排，不依赖真实模型 API 或外部网络。
+
+| 指标 | 样例数 | 当前基线 |
 |---|---:|---:|
-| Skill Accuracy | 15 | 100.00% |
+| Skill Selection Accuracy | 15 | 100.00% |
 | Tool Selection Accuracy | 7 | 100.00% |
 | Diagnosis Accuracy | 6 | 100.00% |
 | Growth Loop Success Rate | 1 | 100.00% |
 
-合计 29 条确定性样例。该结果验证编排、选择、诊断聚合和成长闭环逻辑，不代表真实模型在开放输入上的泛化准确率。
+该基线用于验证确定性的选择、诊断聚合和成长闭环逻辑，不代表真实模型面对开放输入时的泛化准确率。
 
-## 快速开始
+## 验证项目
 
-环境要求：
+- 在后端目录运行 go test ./...，执行完整 Go 测试。
+- 在后端目录运行 go test -v ./evaluation，查看可读评测报告。
+- 在前端目录运行 npm run build，验证 TypeScript 和生产构建。
 
-- Go 1.26.1，或启用 `GOTOOLCHAIN=auto`
-- Node.js 与 npm
-- Docker Compose
-- 通义千问 DashScope API Key
+## 项目文档
 
-启动后端与依赖：
+- [后端说明](interview-agent-back-end/interview-agent/README.md)：服务职责、运行环境、配置和验证。
+- [前端说明](interview-agent-web/interview-agent-web/README.md)：界面能力、本地开发和后端连接。
+- [评测说明](interview-agent-back-end/interview-agent/evaluation/README.md)：评测设计、数据和指标口径。
 
-```bash
-cd interview-agent-back-end/interview-agent
-cp .env.example .env
-# 在 .env 中设置 DASHSCOPE_API_KEY
-docker compose up -d
-go run cmd/main.go web
-```
+## 项目状态
 
-后端监听 `http://localhost:9090`，健康检查为 `GET /health`，训练 WebSocket 为 `/ws`。
+项目目前处于持续开发阶段。学生能力训练、长期能力画像、教育 Tool Calling、五类 Skill、RAG、Memory、WebSocket、Speech 和离线评测均已接入。
 
-启动前端：
+历史招聘协议仅作为兼容入口保留；新的调用方应使用学生能力训练语义。
 
-```bash
-cd interview-agent-web/interview-agent-web
-npm install
-npm run dev
-```
+## 问题反馈
 
-前端默认访问地址为 `http://localhost:5173`。
+如需反馈问题或提出改进建议，请使用 [GitHub Issues](https://github.com/haishuiwu/Interview-Agent/issues)。
 
-可选命令：
+## 许可
 
-```bash
-go run cmd/main.go chat
-go run cmd/main.go load-data
-go run cmd/main.go eval -h
-```
-
-## WebSocket 训练协议
-
-新请求只使用学生能力训练语义：
-
-```json
-{
-  "type": "start_training",
-  "learning_goal": "提升课堂讨论中的结构化表达能力",
-  "student_profile": "八年级学生，能提出观点，但论据组织不稳定"
-}
-```
-
-旧的 `start_interview`、`jd`、`resume`、`assessment` 和 `profile` 仅保留在协议兼容 DTO 与前端映射层，进入核心运行时前会转换为新字段；核心领域模型不继续消费招聘字段。
-
-## 测试
-
-```bash
-cd interview-agent-back-end/interview-agent
-go test ./...
-go test -v ./evaluation
-
-cd ../../interview-agent-web/interview-agent-web
-npm run build
-```
-
-## 目录
-
-- `interview-agent-back-end/interview-agent`：Go 后端、Eino Graph、Agent、Skill、Tool、RAG、Memory、Speech 与 Evaluation。
-- `interview-agent-web/interview-agent-web`：React + TypeScript 学生训练界面。
-
-后端的配置、协议和实现边界详见 [后端 README](interview-agent-back-end/interview-agent/README.md)。
+当前仓库尚未附带开源许可证。使用、分发或修改前，请先取得项目维护者授权。

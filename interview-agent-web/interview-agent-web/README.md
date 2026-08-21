@@ -1,127 +1,128 @@
-# 师练 AI Web - 教师教学能力训练前端
+# StudentCoach Web
 
-基于 React + TypeScript + Vite，通过 WebSocket 提供教师资格、试讲答辩与青年教师发展的完整训练交互。完整产品立意见 [项目级 README](../../README.md)。
+StudentCoach 的学生训练交互界面，基于 React、TypeScript 和 Vite 构建。
+
+前端负责登录、学习目标输入、训练对话、语音交互、过程反馈、能力报告和成长计划展示。完整项目定位见[项目首页](../../README.md)。
+
+## 界面能力
+
+- 用户注册、登录与登录状态恢复；
+- 输入学习目标和学生画像；
+- 通过 WebSocket 接收流式训练消息；
+- 展示训练阶段、任务、追问和即时反馈；
+- 展示能力评价报告和成长建议；
+- 上传训练资料；
+- 在后端允许时使用问题朗读和语音作答；
+- 将历史协议映射为新的学生训练消息，页面核心状态不消费招聘字段。
 
 ## 技术栈
 
 | 类别 | 选型 |
-|------|------|
-| 框架 | React 19 + TypeScript |
-| 构建 | Vite 8 |
+|---|---|
+| 界面框架 | React 19 |
+| 开发语言 | TypeScript |
+| 构建工具 | Vite 8 |
 | 样式 | Tailwind CSS 4 |
 | 状态管理 | Zustand |
-| 通信 | WebSocket（训练/ASR）+ REST API（登录、TTS、capabilities） |
+| 内容渲染 | React Markdown |
+| 实时通信 | WebSocket |
+| 服务接口 | REST API |
 
-## 前置条件
+## 环境要求
 
-1. **Node.js 20.19+ 或 22.12+**
+- Node.js 20.19 以上或 22.12 以上；
+- npm；
+- 已启动的 StudentCoach 后端；
+- 推荐使用近期版本的 Chrome 或 Edge，以获得完整语音能力。
 
-```bash
-node --version   # 确认已安装
-```
+## 本地启动
 
-2. **后端服务已启动**
-
-前端依赖后端提供 API 和 WebSocket 服务（默认 `localhost:9090`）。请先按照 [interview-agent](../../interview-agent-back-end/interview-agent) 后端项目的说明启动后端：
-
-```bash
-cd ../../interview-agent-back-end/interview-agent
-make infra-up              # 启动 Milvus + Redis + MySQL
-go run cmd/main.go web     # 启动后端，监听 :9090
-```
-
-## 快速启动
-
-```bash
-# 1. 安装依赖
-npm install
-
-# 2. 启动开发服务器
-npm run dev
-```
-
-启动后访问 http://localhost:5173
+1. 先按照[后端说明](../../interview-agent-back-end/interview-agent/README.md)启动依赖和 Go 服务。
+2. 进入 interview-agent-web/interview-agent-web。
+3. 运行 npm install 安装依赖。
+4. 运行 npm run dev 启动开发服务器。
+5. 在浏览器打开 http://localhost:5173。
 
 ## 使用流程
 
-1. **注册/登录** — 首次使用需注册账号
-2. **上传教师题库**（可选） — 支持教师资格题、试讲答辩题和课堂情境题；不上传时使用内置题库与动态生成
-3. **开始训练** — 输入教师岗位/考核标准与教学档案，系统执行完整训练流程：
-   - 解析标准 → 诊断训练起点 → 检索教师题库 → 规划训练
-   - 教育理论、教学实践、课堂情境三阶段自适应训练
-   - 五维形成性评价 + 教学能力提升计划
-4. **教研问答** — 可围绕课程标准、教学设计、课堂管理和学习评价进行启发式交流
+1. 注册或登录学生账号。
+2. 输入本轮学习目标和必要的学生背景信息。
+3. 开始训练，按教练提示完成任务并回答追问。
+4. 查看即时反馈，继续补充或修正思路。
+5. 训练结束后查看能力评价和成长建议。
+6. 下一次训练时，系统会结合历史能力画像推荐更合适的方向。
+
+## 后端连接
+
+开发环境由 Vite 将浏览器请求代理到 http://localhost:9090：
+
+| 浏览器路径 | 后端用途 |
+|---|---|
+| /api | 登录、注册和语音 REST API |
+| /ws | 训练会话 WebSocket |
+| /ws/speech/asr | 实时语音识别 WebSocket |
+
+如果后端不使用默认 9090 端口，需要同步调整 vite.config.ts 中的代理目标。
 
 ## 语音训练
 
-语音由后端 capability 和用户开关共同控制。后端保持默认 `SPEECH_ENABLED=false` 时，页面行为与纯文字版本一致；后端开启后，训练设置和输入区会显示“启用语音训练”。
+语音能力由后端开关和用户设置共同控制。后端保持默认关闭时，页面使用纯文字训练。
 
-- 问题到达后可自动朗读，并可随时“跳过朗读”。
-- 点击“语音作答”后才申请麦克风权限；录音时显示实时 partial。
-- 点击“结束识别”后停止麦克风，final 作为可编辑草稿写入原输入框。
-- 实时识别降级时继续录音，结束后由后端 HTTP ASR 生成草稿。
-- 语音完全失败时保留已有输入和最后 partial，可直接改用键盘。
-- 新任务、提交、终止训练、关闭语音、断线和组件卸载都会取消旧播放、麦克风和 ASR WebSocket。
+启用后：
 
-浏览器只访问本项目的 `/api/speech/*` 和 `/ws/speech/asr`，源码和浏览器存储中不应出现 DashScope API Key、供应商 URL 或模型名。ASR final 不会自动触发评分。
+- StudentCoach 的问题可以自动朗读，也可以随时跳过；
+- 浏览器只在用户主动开始语音作答后申请麦克风权限；
+- 实时识别结果会逐步显示；
+- 最终识别文本只进入可编辑输入框，不会自动提交；
+- 实时识别失败时，后端可以使用 HTTP ASR 降级；
+- 新任务、提交、终止训练、断线或页面卸载会释放旧的音频与麦克风资源。
 
-首次验收建议在 Chrome/Edge 的正常窗口中依次检查：允许麦克风、拒绝麦克风、开始/停止/重新录制、录音时切换新问题、终止面试后设备占用消失。完整矩阵见[语音面试发布检查表](../../docs/voice-interview-release-checklist.md)。
+浏览器只连接本项目后端，不保存 DashScope API Key，也不直接连接语音供应商。
 
-## 项目结构
+## 可用脚本
 
-```
-src/
-├── components/
-│   ├── LoginPage.tsx         # 登录/注册页
-│   ├── ChatWindow.tsx        # 主聊天界面（面试交互）
-│   ├── Sidebar.tsx           # 侧边栏（导航 + 连接状态）
-│   ├── MessageBubble.tsx     # 消息气泡
-│   ├── StageIndicator.tsx    # 面试阶段指示器
-│   ├── ScoreCard.tsx         # 答题评分卡片
-│   ├── ReportCard.tsx        # 评估报告展示
-│   ├── ReviewPlanCard.tsx    # 复习规划展示
-│   └── FileUpload.tsx        # 文件拖拽上传
-├── hooks/
-│   ├── useWebSocket.ts       # 面试控制 WebSocket
-│   └── useInterviewSpeech.ts # TTS/麦克风/ASR 生命周期
-├── api/
-│   ├── ws.ts                 # WebSocket 客户端
-│   ├── auth.ts               # 登录注册 API
-│   └── speech.ts             # capability、TTS 与 ASR 客户端
-├── store/
-│   ├── authStore.ts          # 认证状态（Zustand）
-│   └── chatStore.ts          # 聊天/面试状态（Zustand）
-├── types/
-│   └── message.ts            # 消息类型定义
-├── App.tsx                   # 根组件
-└── main.tsx                  # 入口
-```
+| 脚本 | 用途 |
+|---|---|
+| npm run dev | 启动本地开发服务器 |
+| npm run build | 执行 TypeScript 检查并生成生产构建 |
+| npm run preview | 本地预览生产构建 |
+| npm run lint | 执行 ESLint 检查 |
+| npm run verify:phase8 | 执行语音静态、PCM、降级与发布约束检查 |
 
-## 常用命令
+## 构建与验证
 
-```bash
-npm run dev       # 启动开发服务器（默认 :5173）
-npm run build     # 生产构建（输出到 dist/）
-npm run preview   # 预览生产构建
-npm run lint      # ESLint 检查
-npm run verify:phase8 # Phase 6-8 语音静态/PCM/降级/发布约束检查
-```
+提交前至少运行 npm run build。涉及语音功能时，还应运行 npm run verify:phase8，并在 Chrome 或 Edge 中检查麦克风授权、拒绝授权、停止识别、切换任务、断线和终止训练等场景。
 
-## 后端连接配置
+生产构建输出到 dist 目录。
 
-开发模式下，Vite 代理将请求转发到后端：
+## 主要模块
 
-- `/api/*` → `http://localhost:9090`（REST API）
-- `/ws`、`/ws/speech/asr` → `ws://localhost:9090`（WebSocket）
-
-如果后端端口不是 9090，修改 `vite.config.ts` 中的 proxy 配置。
+| 模块 | 职责 |
+|---|---|
+| components | 登录、聊天、消息、阶段、报告和上传界面 |
+| hooks | WebSocket 与语音生命周期 |
+| api | 认证、训练连接和语音请求 |
+| store | 用户状态与训练状态 |
+| types | 前后端消息类型和兼容映射 |
 
 ## 常见问题
 
-**Q: 页面白屏？**
+### 页面无法连接后端
 
-检查后端是否已启动。打开浏览器开发者工具（F12）查看 Console 和 Network，如果看到 `ECONNREFUSED` 或 WebSocket 连接失败，说明后端未运行。
+确认后端已启动并能访问 http://localhost:9090/health。随后检查浏览器开发者工具中的 Network 和 WebSocket 连接。
 
-**Q: 登录后无法连接？**
+### 登录成功但训练无法开始
 
-确认后端 `go run cmd/main.go web` 已正常启动且输出了 `[Web] 服务器启动: http://localhost:9090`。
+确认浏览器请求使用 5173 端口的开发服务，并检查 Vite 代理是否仍指向后端 9090 端口。
+
+### 页面没有语音入口
+
+语音默认关闭。请确认后端已启用 Speech，并检查语音能力接口返回值和浏览器麦克风权限。
+
+### 语音识别没有自动发送
+
+这是预期行为。识别结果只作为草稿写入输入框，学生确认后再主动发送。
+
+## 问题反馈
+
+如需反馈问题或提出改进建议，请使用 [GitHub Issues](https://github.com/haishuiwu/Interview-Agent/issues)。
