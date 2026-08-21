@@ -1,7 +1,7 @@
 const TARGET_SAMPLE_RATE = 16000
 const FRAME_SAMPLES = 320
 
-class InterviewPCMCaptureProcessor extends AudioWorkletProcessor {
+class TrainingPCMCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
     this.sourceToTargetRatio = sampleRate / TARGET_SAMPLE_RATE
@@ -84,4 +84,4 @@ class InterviewPCMCaptureProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('interview-pcm-capture', InterviewPCMCaptureProcessor)
+registerProcessor('training-pcm-capture', TrainingPCMCaptureProcessor)

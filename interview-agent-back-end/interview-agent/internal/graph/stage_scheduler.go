@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 package graph
@@ -13,7 +13,7 @@ type stageConfig struct {
 	askNum int
 }
 
-// defaultStages 训练阶段顺序与每阶段提问数：教育理论 → 教学实践 → 课堂情境。
+// defaultStages 训练阶段顺序与每阶段提问数：知识理解 → 实践应用 → 综合情境。
 var defaultStages = []stageConfig{
 	{imodel.QuestionTypeTheory, 8},
 	{imodel.QuestionTypePractice, 5},
@@ -32,7 +32,7 @@ type adjustFunc func(cur imodel.DifficultyLevel, consecRight, consecWrong int) i
 //   - 进入新阶段时把难度重置为本轮画像起点（默认 medium）、连对/连错清零；
 //   - 依据每题得分调整本阶段内的后续难度。
 //
-// 把这套逻辑从 nodeInterview 的 IO（提问/评分/回调）中剥离出来，使其可独立测试。
+// 把这套逻辑从 nodeTraining 的 IO（提问/评分/回调）中剥离出来，使其可独立测试。
 type stageScheduler struct {
 	stages []stageConfig
 	byType map[string][]imodel.PlannedQuestion

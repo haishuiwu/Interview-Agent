@@ -3,7 +3,7 @@
  * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
  */
 
-// Package config 管理 InterviewAgent 的全局配置
+// Package config 管理 StudentCoach 的全局配置。
 package config
 
 import (

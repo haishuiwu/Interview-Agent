@@ -54,7 +54,7 @@ const questionParserPrompt = `你是一名学生能力训练题库解析专家�
     "reference": "参考思考路径、关键依据或观察指标",
     "difficulty": "easy 或 medium 或 hard",
     "type": "theory 或 practice 或 scenario",
-    "skills": ["教学能力标签1", "教学能力标签2"]
+    "skills": ["学生能力标签1", "学生能力标签2"]
   }
 ]
 

@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 import { useChatStore } from '../store/chatStore'
@@ -14,8 +14,8 @@ export function Sidebar() {
   return (
     <div className="w-64 bg-gray-900 text-white flex flex-col h-screen">
       <div className="p-4 border-b border-gray-700">
-        <h1 className="text-lg font-bold">师练 AI</h1>
-        <p className="text-xs text-gray-400 mt-1">学生能力提升系统</p>
+        <h1 className="text-lg font-bold">StudentCoach</h1>
+        <p className="text-xs text-gray-400 mt-1">AI Student Growth Agent</p>
       </div>
 
       <div className="p-3">

@@ -162,7 +162,7 @@ func (c *FallbackASRClient) TranscribeBuffered(ctx context.Context, wav []byte) 
 	request.Header.Set("Authorization", "Bearer "+c.apiKey)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("User-Agent", "InterviewAgent-Go/1.0")
+	request.Header.Set("User-Agent", "StudentCoach-Go/1.0")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {

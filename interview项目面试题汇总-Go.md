@@ -28,19 +28,7 @@ StudentCoach 是一个面向学生长期成长的 AI 能力训练系统。学生
 
 ---
 
-### 0.2 为什么把原来的面试训练项目迁移成学生能力提升 Agent？
 
-**考察点**
-
-是否真正理解领域迁移，而不是只替换名词和 Prompt。
-
-**参考回答**
-
-面试训练通常围绕一次选拔展开，核心问题是“是否匹配”和“能否通过”；学生能力提升关注的是“当前能力证据是什么、短板在哪里、经过训练是否发生变化”。两者在数据生命周期和评价边界上不同。
-
-迁移时我没有重写 Graph 或删除 RAG、Memory 等核心模块，而是先收敛领域模型，再把旧协议隔离到兼容 DTO。核心运行时改成 AbilityStandard、StudentProfile、LearningDiagnosis、StudentAbilityProfile 和 TrainingState，Agent 也改成 AbilityAnalyzer、StudentProfileAnalyzer、StudentCoach、AbilityEvaluator 和 GrowthPlanner。
-
-真正的迁移标志不是类型改名，而是形成了长期能力画像闭环：训练前读取历史，训练后计算变化并保存，下一轮再让画像影响 Skill、任务和难度。
 
 ---
 
@@ -115,7 +103,7 @@ Eino Graph 适合表达这种稳定流程。每个节点只承担一个领域职
 
 Graph 在 StudentCoach 节点后有一个条件分支：如果学生一题未答就退出，直接结束；只要已有有效作答，就继续生成基于现有证据的报告和计划。
 
-代码中的 jd_analysis、resume_match、interview、review_plan 等节点 ID 为保持拓扑和客户端阶段兼容而保留，但节点实现已经使用新的领域组件。
+代码中的节点 ID 已收口为 ability_analysis、student_profile_analysis、training、growth_plan，节点实现与领域组件使用同一套学生成长语言。
 
 ---
 
@@ -147,7 +135,7 @@ Graph 在 StudentCoach 节点后有一个条件分支：如果学生一题未答
 
 前端同样先把历史消息映射为 start_training 的新字段，核心状态不继续消费招聘字段。数据库没有改表，因此部分历史列名仍存在存储适配层，但加载后会转换成 StudentAbilityProfile 或 GrowthRecord 使用。
 
-Graph 节点 ID 和部分文件名没有强行修改，因为本轮目标是领域模型收敛而不是架构重构。面试时应主动说明：兼容名称存在不等于业务仍是招聘语义。
+Graph 节点 ID 和 Agent 文件名已经完成领域命名收口；旧协议与存储字段仅停留在兼容边界，不进入核心业务语义。
 
 ---
 
@@ -576,7 +564,7 @@ Go 并发控制、状态机和长连接生命周期。
 
 **参考回答**
 
-每个 WSSession 只允许一个完整训练运行。beginInterview 在互斥锁内检查 interviewRunning，创建带取消函数的 context 和容量为 1 的 answerCh，并递增 interviewGeneration。
+每个 WSSession 只允许一个完整训练运行。beginTraining 在互斥锁内检查 trainingRunning，创建带取消函数的 context 和容量为 1 的 answerCh，并递增 trainingGeneration。
 
 服务发送问题前先设置 awaitingAnswer，避免客户端立即回答时落入状态间隙。handleAnswer 只有在正在训练、等待回答、尚未完成且连接未关闭时才把答案写入 channel；成功后立即清除等待状态，重复提交会返回 ANSWER_NOT_EXPECTED。
 

@@ -56,12 +56,12 @@ func newWSSessionTestConnection(t *testing.T) (*WSSession, *websocket.Conn) {
 	return ws, clientConn
 }
 
-func beginTestInterview(t *testing.T, ws *WSSession) (context.Context, chan string, uint64) {
+func beginTestTraining(t *testing.T, ws *WSSession) (context.Context, chan string, uint64) {
 	t.Helper()
 
-	ctx, answerCh, generation, ok := ws.beginInterview()
+	ctx, answerCh, generation, ok := ws.beginTraining()
 	if !ok {
-		t.Fatal("beginInterview unexpectedly rejected a new interview")
+		t.Fatal("beginTraining unexpectedly rejected a new training session")
 	}
 	return ctx, answerCh, generation
 }
@@ -71,9 +71,9 @@ func waitUntilAwaitingAnswer(t *testing.T, ws *WSSession) {
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		ws.interviewMu.Lock()
+		ws.trainingMu.Lock()
 		awaiting := ws.awaitingAnswer
-		ws.interviewMu.Unlock()
+		ws.trainingMu.Unlock()
 		if awaiting {
 			return
 		}
@@ -82,17 +82,17 @@ func waitUntilAwaitingAnswer(t *testing.T, ws *WSSession) {
 	t.Fatal("session did not enter the awaiting-answer state")
 }
 
-func TestHandleQuitInterviewIsIdempotent(t *testing.T) {
+func TestHandleQuitTrainingIsIdempotent(t *testing.T) {
 	ws, _ := newWSSessionTestConnection(t)
-	beginTestInterview(t, ws)
+	beginTestTraining(t, ws)
 
-	ws.handleQuitInterview()
-	ws.handleQuitInterview()
+	ws.handleQuitTraining()
+	ws.handleQuitTraining()
 }
 
 func TestHandleAnswerAfterQuitDoesNotPanic(t *testing.T) {
 	ws, _ := newWSSessionTestConnection(t)
-	ctx, answerCh, generation := beginTestInterview(t, ws)
+	ctx, answerCh, generation := beginTestTraining(t, ws)
 
 	result := make(chan error, 1)
 	go func() {
@@ -101,7 +101,7 @@ func TestHandleAnswerAfterQuitDoesNotPanic(t *testing.T) {
 	}()
 	waitUntilAwaitingAnswer(t, ws)
 
-	ws.handleQuitInterview()
+	ws.handleQuitTraining()
 	ws.handleAnswer("late answer")
 
 	select {
@@ -116,7 +116,7 @@ func TestHandleAnswerAfterQuitDoesNotPanic(t *testing.T) {
 
 func TestHandleAnswerDoesNotBlockWhenAnswerPending(t *testing.T) {
 	ws, _ := newWSSessionTestConnection(t)
-	ctx, answerCh, generation := beginTestInterview(t, ws)
+	ctx, answerCh, generation := beginTestTraining(t, ws)
 
 	answerResult := make(chan string, 1)
 	go func() {
@@ -149,9 +149,9 @@ func TestHandleAnswerDoesNotBlockWhenAnswerPending(t *testing.T) {
 	}
 }
 
-func TestBeginInterviewRejectsDuplicateStart(t *testing.T) {
+func TestBeginTrainingRejectsDuplicateStart(t *testing.T) {
 	ws, clientConn := newWSSessionTestConnection(t)
-	beginTestInterview(t, ws)
+	beginTestTraining(t, ws)
 
 	ws.handleStartTraining("another learning goal", "another student profile")
 
@@ -219,7 +219,7 @@ func TestAdaptTrainingInput(t *testing.T) {
 
 func TestWebSocketDisconnectCancelsAnswerWait(t *testing.T) {
 	ws, clientConn := newWSSessionTestConnection(t)
-	ctx, answerCh, generation := beginTestInterview(t, ws)
+	ctx, answerCh, generation := beginTestTraining(t, ws)
 
 	result := make(chan error, 1)
 	go func() {
@@ -257,7 +257,7 @@ func TestHandleAnswerAndQuitConcurrently(t *testing.T) {
 	ws, _ := newWSSessionTestConnection(t)
 
 	for i := 0; i < 25; i++ {
-		ctx, answerCh, generation := beginTestInterview(t, ws)
+		ctx, answerCh, generation := beginTestTraining(t, ws)
 		result := make(chan error, 1)
 		go func() {
 			_, err := ws.waitForAnswer(ctx, generation, answerCh)
@@ -273,7 +273,7 @@ func TestHandleAnswerAndQuitConcurrently(t *testing.T) {
 		}()
 		go func() {
 			defer handlers.Done()
-			ws.handleQuitInterview()
+			ws.handleQuitTraining()
 		}()
 		handlers.Wait()
 
@@ -286,18 +286,18 @@ func TestHandleAnswerAndQuitConcurrently(t *testing.T) {
 			t.Fatalf("iteration %d: waitForAnswer did not return", i)
 		}
 
-		ws.finishInterview(generation)
+		ws.finishTraining(generation)
 	}
 }
 
-func TestSendInterviewQuestionAddsSpeechFieldsWithoutChangingContent(t *testing.T) {
+func TestSendTrainingQuestionAddsSpeechFieldsWithoutChangingContent(t *testing.T) {
 	ws, clientConn := newWSSessionTestConnection(t)
 	ws.cfg.SpeechService = newFakeSpeechService(t, true)
 	ws.cfg.speechQuestions = newActiveQuestionRegistry()
-	_, _, generation := beginTestInterview(t, ws)
+	_, _, generation := beginTestTraining(t, ws)
 	content := "## **请介绍** Go 的 `GMP`。\n\n`[来源: LLM 出题]`"
 
-	ws.sendInterviewQuestion(generation, 1, content)
+	ws.sendTrainingQuestion(generation, 1, content)
 
 	if err := clientConn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatalf("set websocket read deadline: %v", err)
@@ -324,11 +324,11 @@ func TestSendInterviewQuestionAddsSpeechFieldsWithoutChangingContent(t *testing.
 	}
 }
 
-func TestSendInterviewQuestionOmitsSpeechFieldsWhenDisabled(t *testing.T) {
+func TestSendTrainingQuestionOmitsSpeechFieldsWhenDisabled(t *testing.T) {
 	ws, clientConn := newWSSessionTestConnection(t)
-	_, _, generation := beginTestInterview(t, ws)
+	_, _, generation := beginTestTraining(t, ws)
 
-	ws.sendInterviewQuestion(generation, 1, "text-only question")
+	ws.sendTrainingQuestion(generation, 1, "text-only question")
 
 	if err := clientConn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatalf("set websocket read deadline: %v", err)
@@ -342,13 +342,13 @@ func TestSendInterviewQuestionOmitsSpeechFieldsWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestSendInterviewQuestionStillSendsTextWhenSpeechNormalizationFails(t *testing.T) {
+func TestSendTrainingQuestionStillSendsTextWhenSpeechNormalizationFails(t *testing.T) {
 	ws, clientConn := newWSSessionTestConnection(t)
 	ws.cfg.SpeechService = newTTSTestService(t, true, &fakeSpeechSynthesizer{}, 20, time.Second, 5)
-	_, _, generation := beginTestInterview(t, ws)
+	_, _, generation := beginTestTraining(t, ws)
 	content := "这是一个超过语音上限但必须显示的文字问题"
 
-	ws.sendInterviewQuestion(generation, 1, content)
+	ws.sendTrainingQuestion(generation, 1, content)
 
 	if err := clientConn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatalf("set websocket read deadline: %v", err)

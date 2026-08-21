@@ -1,141 +1,385 @@
 # StudentCoach
 
-面向学生长期成长的 AI 能力训练教练。
+> 面向学生能力提升的 AI Growth Agent
 
-StudentCoach 根据学生的学习目标、当前能力和历史训练记录组织个性化训练。它通过任务、追问和反馈帮助学生发现问题，并在每轮训练后更新能力画像，让下一次训练能够从真实成长状态继续。
+StudentCoach 将学习目标、能力诊断、个性化训练、过程反馈、能力评价和长期成长记录连接成一个可追溯闭环。它不是一次性问答机器人，也不是招聘面试工具；系统关注的是学生当前能力证据、训练过程和跨轮次变化。
 
-## 项目价值
+项目采用 Go + Eino Graph 构建受业务规则约束的 Agent 工作流，配套 React Web 客户端、RAG、长期记忆、Skill、Tool Calling、语音交互、业务 Trace 和离线评测。
 
-多数学习助手只回答当前问题，难以判断学生长期缺什么、练过什么、下一步应该练什么。StudentCoach 将一次对话扩展为持续成长闭环：
+## 核心特点
 
-- 训练前了解目标和已有能力；
-- 训练中根据表现调整任务、追问方向和难度；
-- 训练后生成有依据的能力评价与成长建议；
-- 下一次训练读取历史画像，优先训练当前短板。
+- **长期能力画像**：持续维护逻辑思维、沟通表达、问题解决、批判性思维和反思能力。
+- **个性化训练**：结合学习目标、当前短板、历史记录、Skill 和 RAG 案例生成训练任务。
+- **训练事实一致性**：通过 `TrainingAttempt` 固化任务、问题、回答、评价量规、评价结果和能力变化。
+- **可信成长写入**：LLM 只能调用只读 Tool；能力画像与成长记录由 Go Service 在评价完成后写入。
+- **业务级可观测性**：`AgentTrace` 记录意图、Skill 选择、Tool 调用摘要、Memory 使用、训练事实和能力变化。
+- **成长数据查询**：Dashboard API 聚合当前画像、最近训练、成长趋势和下一步建议。
+- **多模态交互**：支持文字训练、TTS 问题朗读、实时 ASR 与 HTTP 降级识别。
+- **可重复验证**：提供基于 mock LLM 的离线 Evaluation Benchmark 和完整 Go 测试。
 
-系统用于能力训练和形成性反馈，不替代教师评价，也不作升学、招聘或录用决策。
+## 能力成长闭环
 
-## 适用场景
+```mermaid
+flowchart LR
+    A[学习目标] --> B[读取学生画像与历史]
+    B --> C[能力诊断]
+    C --> D[选择 Skill 与训练任务]
+    D --> E[TrainingAttempt]
+    E --> F[学生作答与过程反馈]
+    F --> G[AbilityEvaluator]
+    G --> H[StudentGrowthService]
+    H --> I[StudentAbilityProfile]
+    H --> J[GrowthRecord]
+    I --> B
+    E --> K[AgentTrace]
+    G --> K
+    I --> L[Growth Dashboard]
+    J --> L
+    K --> L
+```
 
-- 学生希望提升表达能力，但不知道问题出在结构、论据还是沟通方式；
-- 学生面对开放问题时缺少分析路径，需要练习拆解、方案设计与验证；
-- 学生希望训练逻辑思维、批判性思维或复盘能力；
-- 教师或学习产品需要为学生提供可持续、可追踪的个性化训练。
+一次训练的关键关系为：
 
-## 核心能力
+```text
+AgentTrace
+  └── TrainingAttempt
+        └── EvaluationResult
+              └── GrowthRecord
+                    └── StudentAbilityProfile
+```
 
-### 个性化训练
+这条事实链保证推荐任务、实际问题、学生回答、评分依据和最终成长记录能够互相追溯。
 
-StudentCoach 先理解学习目标，再结合学生画像选择训练方式。目标不明确时，系统会根据历史能力短板推荐优先训练方向。
+## 架构说明
 
-### 五维能力画像
+StudentCoach 是一个由 Eino Graph 编排的单 Agent 训练系统，不将固定节点包装成 Multi-Agent。
 
-系统持续维护以下能力：
+```text
+React Web
+   │  REST / WebSocket
+   ▼
+HTTP Handler
+   │
+   ├── Authentication / Speech
+   ├── AgentTrace Query
+   └── Growth Dashboard
+            │
+            ▼
+Eino Graph Training Workflow
+   │
+   ├── AbilityAnalyzer
+   ├── StudentProfileAnalyzer
+   ├── QuestionPlanner
+   ├── StudentCoach
+   ├── AbilityEvaluator
+   └── GrowthPlanner
+            │
+            ▼
+Domain Services
+   ├── StudentGrowthService
+   ├── AgentTraceService
+   └── StudentGrowthDashboardService
+            │
+            ▼
+Redis / MySQL / Milvus / BM25
+```
 
-| 能力维度 | 关注点 |
+### Graph 流程
+
+```text
+ability_analysis
+  → student_profile_analysis
+  → question_plan
+  → training
+  → weak_review（条件分支）
+  → evaluation
+  → growth_plan
+```
+
+Graph 拓扑固定，节点负责明确的领域职责；Skill 影响训练策略，但不直接操作存储。
+
+## 领域模型
+
+| 模型 | 职责 |
 |---|---|
-| 逻辑思维 | 关系识别、推理过程与结论一致性 |
-| 沟通表达 | 信息完整性、结构清晰度与受众意识 |
-| 问题解决 | 问题定义、方案设计、验证与迭代 |
-| 批判性思维 | 证据判断、假设识别与多角度比较 |
-| 反思能力 | 复盘归因、方法总结与迁移应用 |
+| `StudentAbilityProfile` | 当前能力分数、优势、短板和跨轮成长历史 |
+| `AbilityGrowthRecord` | 一轮训练前后分数、变化量及 TrainingAttempt 关联 |
+| `TrainingAttempt` | 一次任务、提问、回答、评价和能力变化的唯一事实 |
+| `EvaluationResult` | 评价分数、反馈、命中点、遗漏点和追问判断 |
+| `AgentTrace` | Agent 决策、Tool、Memory、训练事实及能力变化摘要 |
+| `StudentGrowthDashboard` | 面向学生展示的成长聚合视图 |
 
-能力画像同时记录优势、短板、成长历史和最近训练时间。
+能力分范围为 `0～1`。Dashboard 不重新计算能力，只展示已保存画像和成长记录。
 
-### 教练式对话
+## Tool 权限边界
 
-StudentCoach 不模拟面试官。它会先了解学生目标，根据表现继续追问，帮助学生暴露思考过程，并在关键节点提供具体反馈和成长建议。
+Agent Runtime 默认只注册只读 Tool：
 
-### 可信评价
+- `get_student_profile`
+- `get_growth_history`
+- `get_ability_report`
+- `search_training_case`
+- `recommend_training_task`
 
-大模型负责分析学生表现并给出评价依据，最终能力分、能力变化和成长记录由 Go 服务聚合与保存，避免让模型直接决定长期分数。
+以下写操作不向 LLM 开放：
 
-### 训练资源与长期记忆
+- `update_ability_profile`
+- `save_growth_record`
 
-系统通过 RAG 检索适合当前短板的训练案例，通过统一工具注册中心读取学生画像、成长历史和最近评价。Skill 只负责训练策略，不直接访问数据库。
+长期数据写入链路固定为：
 
-## 一次训练如何进行
+```text
+TrainingAttempt
+  → AbilityEvaluator
+  → StudentGrowthService
+  → update profile
+  → save growth record
+```
 
-1. 学生说明学习目标，或提出通用训练请求。
-2. 系统读取学生画像和历史训练记录。
-3. 能力分析器形成目标能力标准，学生画像分析器识别当前差距。
-4. 训练规划器结合 Skill、RAG 案例和难度生成任务。
-5. StudentCoach 组织练习，并通过追问发现能力问题。
-6. 能力评价器输出评价依据，Go 服务聚合本轮结果。
-7. 系统更新学生能力画像、保存成长记录并生成下一步计划。
+因此类似“把我的能力分改成 90 分”的提示不会直接触发画像写入。
 
-## 技术组成
+## Agent Trace
 
-| 层次 | 主要技术与职责 |
+`AgentTrace` 按 session 记录：
+
+- 归一化后的学生目标；
+- 选择的 Skill 和决策原因；
+- Tool 名称、成功状态、耗时和安全摘要；
+- Memory 使用摘要；
+- 关联的 TrainingAttempt ID；
+- 训练前后能力分；
+- 执行状态和时间。
+
+Trace 不保存 token、完整 Prompt、完整学生答案或敏感个人信息。
+
+查询接口：
+
+```http
+GET /api/trace/{session_id}
+Authorization: Bearer <token>
+```
+
+## Growth Dashboard
+
+Dashboard 将 `StudentAbilityProfile`、`GrowthRecord`、`TrainingAttempt` 和 `AgentTrace` 聚合为学生侧成长视图。
+
+```http
+GET /api/student/growth/dashboard?student_id=student-001
+Authorization: Bearer <token>
+```
+
+响应示例：
+
+```json
+{
+  "student_id": "student-001",
+  "abilities": {
+    "communication": {
+      "score": 0.65,
+      "trend": "up",
+      "recent_change": 0.1,
+      "evidence": ["回答结构比之前完整"]
+    }
+  },
+  "recent_trainings": [
+    {
+      "session_id": "session-001",
+      "training_attempt_id": "attempt-001",
+      "skill": "communication-training",
+      "result": "completed",
+      "learning_goal": "提升表达能力"
+    }
+  ],
+  "strengths": ["能够主动澄清问题"],
+  "weaknesses": ["表达结构"],
+  "growth_trend": [
+    {
+      "session_id": "session-001",
+      "ability": "communication",
+      "score": 0.65,
+      "change": 0.1
+    }
+  ],
+  "next_recommendations": ["继续进行表达训练"]
+}
+```
+
+## 技术栈
+
+| 层次 | 技术 |
 |---|---|
-| 前端 | React、TypeScript、Vite，提供文字、语音和报告交互 |
-| 服务端 | Go，负责业务规则、认证、评价聚合和数据服务 |
-| Agent 编排 | Eino Graph，保持既有训练流程拓扑 |
-| 训练策略 | 五类学生能力训练 Skill |
-| 数据工具 | 统一 Tool Registry，由 Agent 按意图调用 |
-| 检索 | Milvus、BM25、融合与重排 |
-| 记忆 | Redis 与 MySQL，维护会话和长期能力画像 |
-| 实时交互 | WebSocket、流式响应、TTS 与 ASR |
-| 扩展能力 | 保留现有 MCP 网页与 GitHub 能力 |
-| 自动评测 | mock LLM 驱动的离线 Evaluation Benchmark |
+| Backend | Go 1.26.1、Eino、Gorilla WebSocket |
+| Frontend | React 19、TypeScript、Vite 8、Tailwind CSS、Zustand |
+| Model | DashScope / OpenAI-compatible Chat Model |
+| RAG | Milvus、BM25、融合检索、Cross-Encoder/LLM 重排 |
+| Memory | Redis、MySQL |
+| Authentication | JWT |
+| Speech | DashScope TTS、Realtime ASR、HTTP ASR fallback |
+| Evaluation | Go Test、mock LLM Benchmark |
+
+## 项目结构
+
+```text
+.
+├── interview-agent-back-end/
+│   └── interview-agent/
+│       ├── cmd/                 # CLI 与 Web 服务入口
+│       ├── evaluation/          # 离线 Agent Benchmark
+│       └── internal/
+│           ├── agent/           # Agent 领域组件
+│           ├── graph/           # Eino Graph 编排
+│           ├── handler/         # HTTP / WebSocket
+│           ├── memory/          # Redis、MySQL、内存存储
+│           ├── model/           # 领域模型
+│           ├── rag/             # 检索、融合与重排
+│           ├── service/         # 成长、Trace、Dashboard 服务
+│           ├── skill/           # 能力训练策略
+│           ├── speech/          # TTS / ASR
+│           └── tool/            # Tool 注册与权限分类
+└── interview-agent-web/
+    └── interview-agent-web/
+        ├── public/
+        ├── scripts/
+        └── src/
+```
 
 ## 快速开始
 
 ### 环境要求
 
 - Go 1.26.1，或启用 Go 自动工具链；
-- Node.js 20.19 以上或 22.12 以上；
+- Node.js 20.19+ 或 22.12+；
 - npm；
 - Docker Compose；
-- 通义千问 DashScope API Key。
+- DashScope API Key。
 
-### 启动服务
+### 1. 启动基础设施
 
-1. 进入 interview-agent-back-end/interview-agent。
-2. 将 .env.example 复制为 .env，并填写 DASHSCOPE_API_KEY。
-3. 运行 docker compose up -d，启动 Milvus、Redis 和 MySQL 等依赖。
-4. 运行 go run cmd/main.go web，后端默认监听 9090 端口。
-5. 进入 interview-agent-web/interview-agent-web。
-6. 运行 npm install，再运行 npm run dev。
-7. 在浏览器打开 http://localhost:5173。
+```bash
+cd interview-agent-back-end/interview-agent
+cp .env.example .env
+# 编辑 .env，至少设置 DASHSCOPE_API_KEY 和安全的 JWT_SECRET
+docker compose up -d
+```
 
-语音功能默认关闭；需要启用时，请先阅读后端环境变量模板中的安全说明。
+Windows PowerShell 可使用：
 
-## 自动评测
+```powershell
+Copy-Item .env.example .env
+docker compose up -d
+```
 
-项目提供完全离线的 Evaluation Benchmark，使用 mock LLM 验证核心编排，不依赖真实模型 API 或外部网络。
+默认依赖端口：
 
-| 指标 | 样例数 | 当前基线 |
-|---|---:|---:|
-| Skill Selection Accuracy | 15 | 100.00% |
-| Tool Selection Accuracy | 7 | 100.00% |
-| Diagnosis Accuracy | 6 | 100.00% |
-| Growth Loop Success Rate | 1 | 100.00% |
+| 服务 | 端口 |
+|---|---:|
+| Backend API | 9090 |
+| Milvus | 19530 |
+| Redis | 36379 |
+| MySQL | 33306 |
+| MinIO API / Console | 9000 / 9001 |
 
-该基线用于验证确定性的选择、诊断聚合和成长闭环逻辑，不代表真实模型面对开放输入时的泛化准确率。
+### 2. 启动后端
 
-## 验证项目
+```bash
+go run cmd/main.go web
+```
 
-- 在后端目录运行 go test ./...，执行完整 Go 测试。
-- 在后端目录运行 go test -v ./evaluation，查看可读评测报告。
-- 在前端目录运行 npm run build，验证 TypeScript 和生产构建。
+健康检查：
 
-## 项目文档
+```bash
+curl http://localhost:9090/health
+```
 
-- [后端说明](interview-agent-back-end/interview-agent/README.md)：服务职责、运行环境、配置和验证。
-- [前端说明](interview-agent-web/interview-agent-web/README.md)：界面能力、本地开发和后端连接。
-- [评测说明](interview-agent-back-end/interview-agent/evaluation/README.md)：评测设计、数据和指标口径。
+### 3. 启动前端
 
-## 项目状态
+```bash
+cd ../../interview-agent-web/interview-agent-web
+npm install
+npm run dev
+```
 
-项目目前处于持续开发阶段。学生能力训练、长期能力画像、教育 Tool Calling、五类 Skill、RAG、Memory、WebSocket、Speech 和离线评测均已接入。
+浏览器访问：<http://localhost:5173>
 
-历史招聘协议仅作为兼容入口保留；新的调用方应使用学生能力训练语义。
+### 4. 可选：加载训练资料
 
-## 问题反馈
+```bash
+go run cmd/main.go load-data
+go run cmd/main.go load-data <file-path>
+```
 
-如需反馈问题或提出改进建议，请使用 [GitHub Issues](https://github.com/haishuiwu/Interview-Agent/issues)。
+## 接口概览
 
-## 许可
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/health` | 健康检查 |
+| POST | `/api/register` | 学生注册 |
+| POST | `/api/login` | 学生登录 |
+| GET | `/api/trace/{session_id}` | 查询一次训练的业务 Trace |
+| GET | `/api/student/growth/dashboard?student_id=...` | 查询学生成长画像 |
+| GET | `/api/speech/capabilities` | 查询语音能力与开关 |
+| POST | `/api/speech/tts` | 文本转语音 |
+| WebSocket | `/ws` | 学生训练会话 |
+| WebSocket | `/ws/speech/asr` | 实时语音识别 |
 
-当前仓库尚未附带开源许可证。使用、分发或修改前，请先取得项目维护者授权。
+除健康检查和未启用认证的本地开发场景外，学生数据接口应携带 JWT。Dashboard 会阻止已认证用户读取其他学生的数据。
+
+## 配置
+
+后端配置模板位于 [`.env.example`](interview-agent-back-end/interview-agent/.env.example)，主要包括：
+
+- Chat Model、Embedding Model 和 Reranker；
+- Milvus、Redis、MySQL；
+- JWT Secret；
+- GitHub Token；
+- Speech 开关、模型、并发、大小和超时；
+- Web Origin 白名单。
+
+语音能力默认关闭。生产环境必须替换默认 JWT Secret，并设置精确的 HTTPS Origin。
+
+不要提交真实 API Key、JWT Secret、学生完整回答、语音内容或其他个人敏感信息。
+
+## 测试与验证
+
+后端：
+
+```bash
+cd interview-agent-back-end/interview-agent
+go test ./...
+go vet ./...
+go test -v ./evaluation
+```
+
+前端：
+
+```bash
+cd interview-agent-web/interview-agent-web
+npm run build
+npm run lint
+```
+
+涉及语音链路时：
+
+```bash
+npm run verify:phase8
+```
+
+Evaluation Benchmark 使用 mock LLM 验证确定性编排、Skill 选择、Tool 权限、能力诊断和成长闭环。它不代表真实模型面对开放输入时的准确率。
+
+## 当前边界
+
+- 当前是 Graph 编排的单 Agent 工作流，不是动态协作的 Multi-Agent 系统。
+- 历史 WebSocket、存储和工程标识仍保留兼容映射，新代码使用 StudentCoach 领域语言。
+- AgentTrace 是项目内部业务可观测能力，不替代 OpenTelemetry、Jaeger 等基础设施链路系统。
+- Dashboard 当前提供后端 API，前端尚无独立成长看板页面。
+- 系统用于学习训练和形成性反馈，不替代正式教育评价、升学或高风险决策。
+
+## 相关文档
+
+- [后端说明](interview-agent-back-end/interview-agent/README.md)
+- [前端说明](interview-agent-web/interview-agent-web/README.md)
+- [Evaluation Benchmark](interview-agent-back-end/interview-agent/evaluation/README.md)
+
+## License
+
+当前仓库尚未附带开源许可证。未经项目维护者授权，请勿擅自分发或用于商业用途。

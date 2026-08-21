@@ -1,4 +1,4 @@
-// Package speech defines provider-neutral speech capabilities for InterviewAgent.
+// Package speech defines provider-neutral speech capabilities for StudentCoach.
 package speech
 
 import (

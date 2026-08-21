@@ -95,14 +95,14 @@ type WSSession struct {
 	sessionCancel context.CancelFunc
 	sessionClosed bool
 
-	interviewMu         sync.Mutex
-	interviewRunning    bool
-	interviewGeneration uint64
-	interviewCancel     context.CancelFunc
-	answerCh            chan string
-	awaitingAnswer      bool
-	completionSent      bool
-	currentQuestionID   string
+	trainingMu         sync.Mutex
+	trainingRunning    bool
+	trainingGeneration uint64
+	trainingCancel     context.CancelFunc
+	answerCh           chan string
+	awaitingAnswer     bool
+	completionSent     bool
+	currentQuestionID  string
 
 	activeSkill skill.Skill       // 当前激活的 Skill（nil 表示无）
 	skillState  *skill.SkillState // 当前 Skill 的交互状态
@@ -148,7 +148,7 @@ func (ws *WSSession) Run() {
 		case "upload_questions":
 			ws.handleUploadQuestions(msg.Filename, msg.Data)
 		case "quit_training", "quit_interview":
-			ws.handleQuitInterview()
+			ws.handleQuitTraining()
 		default:
 			ws.sendError("未知消息类型: " + msg.Type)
 		}
@@ -248,12 +248,12 @@ func (ws *WSSession) handleChat(content string) {
 }
 
 func (ws *WSSession) handleStartTraining(learningGoalRaw, studentProfileRaw string) {
-	ctx, answerCh, generation, ok := ws.beginInterview()
+	ctx, answerCh, generation, ok := ws.beginTraining()
 	if !ok {
 		ws.sendMsg(ServerMsg{
 			Type:    "chat_reply",
 			Code:    "INTERVIEW_ALREADY_RUNNING",
-			Content: "当前已有教学能力训练正在进行，请先完成或退出本轮训练。",
+			Content: "当前已有学生能力训练正在进行，请先完成或退出本轮训练。",
 		})
 		return
 	}
@@ -268,12 +268,12 @@ func (ws *WSSession) runTraining(
 	learningGoalRaw string,
 	studentProfileRaw string,
 ) {
-	defer ws.finishInterview(generation)
+	defer ws.finishTraining(generation)
 
 	learningGoalText, err := ws.resolveInput(ctx, learningGoalRaw)
 	if err != nil {
 		if ctx.Err() == nil {
-			ws.sendInterviewMsg(generation, ServerMsg{
+			ws.sendTrainingMsg(generation, ServerMsg{
 				Type:    "error",
 				Message: "学习目标解析失败，请粘贴学习目标、课程标准或能力要求，或上传文件重试",
 			})
@@ -284,7 +284,7 @@ func (ws *WSSession) runTraining(
 	studentProfileText, err := ws.resolveInput(ctx, studentProfileRaw)
 	if err != nil {
 		if ctx.Err() == nil {
-			ws.sendInterviewMsg(generation, ServerMsg{
+			ws.sendTrainingMsg(generation, ServerMsg{
 				Type:    "error",
 				Message: "学生画像解析失败，请粘贴已有基础、学习经历与能力证据，或上传文件重试",
 			})
@@ -302,26 +302,27 @@ func (ws *WSSession) runTraining(
 		RerankerType:   ws.cfg.RerankerType,
 		RerankModel:    ws.cfg.RerankModel,
 		APIKey:         ws.cfg.APIKey,
+		TraceService:   ws.cfg.AgentTraceService,
 	})
 
 	callbacks := &graph.TrainingCallbacks{
 		OnStageChange: func(stage string, msg string) {
-			ws.sendInterviewMsg(generation, ServerMsg{Type: "stage_change", Stage: stage, Message: msg})
+			ws.sendTrainingMsg(generation, ServerMsg{Type: "stage_change", Stage: stage, Message: msg})
 		},
 		OnQuestion: func(questionNum int, content string) {
-			ws.sendInterviewQuestion(generation, questionNum, content)
+			ws.sendTrainingQuestion(generation, questionNum, content)
 		},
 		OnScore: func(score *agent.AnswerScore) {
-			ws.sendInterviewMsg(generation, ServerMsg{
+			ws.sendTrainingMsg(generation, ServerMsg{
 				Type: "score", Score: score.Score, Feedback: score.Feedback,
 				KeyPointsHit: score.KeyPointsHit, KeyPointsMissed: score.KeyPointsMissed,
 			})
 		},
 		OnReport: func(report string) {
-			ws.sendInterviewMsg(generation, ServerMsg{Type: "report", Content: report})
+			ws.sendTrainingMsg(generation, ServerMsg{Type: "report", Content: report})
 		},
 		OnReviewPlan: func(plan string) {
-			ws.sendInterviewMsg(generation, ServerMsg{Type: "review_plan", Content: plan})
+			ws.sendTrainingMsg(generation, ServerMsg{Type: "review_plan", Content: plan})
 		},
 		GetUserAnswer: func() (string, error) {
 			return ws.waitForAnswer(ctx, generation, answerCh)
@@ -337,15 +338,15 @@ func (ws *WSSession) runTraining(
 	ctx = educationtool.WithRuntime(ctx, ws.userID, growthService)
 	_, err = orchestrator.RunTraining(ctx, learningGoalText, studentProfileText, ws.userID, callbacks)
 	if err != nil && !errors.Is(err, graph.ErrUserQuit) && !errors.Is(err, context.Canceled) {
-		ws.sendInterviewMsg(generation, ServerMsg{Type: "error", Message: "学生能力训练流程出错: " + err.Error()})
+		ws.sendTrainingMsg(generation, ServerMsg{Type: "error", Message: "学生能力训练流程出错: " + err.Error()})
 	}
 }
 
 func (ws *WSSession) handleAnswer(content string) {
-	ws.interviewMu.Lock()
-	generation := ws.interviewGeneration
+	ws.trainingMu.Lock()
+	generation := ws.trainingGeneration
 	questionID := ws.currentQuestionID
-	canAccept := ws.interviewRunning && ws.awaitingAnswer && !ws.completionSent && !ws.sessionClosed
+	canAccept := ws.trainingRunning && ws.awaitingAnswer && !ws.completionSent && !ws.sessionClosed
 	if canAccept {
 		select {
 		case ws.answerCh <- content:
@@ -356,14 +357,14 @@ func (ws *WSSession) handleAnswer(content string) {
 			ws.awaitingAnswer = false
 		}
 	}
-	shouldNotify := !canAccept && ws.interviewRunning && !ws.completionSent && !ws.sessionClosed
-	ws.interviewMu.Unlock()
+	shouldNotify := !canAccept && ws.trainingRunning && !ws.completionSent && !ws.sessionClosed
+	ws.trainingMu.Unlock()
 	if canAccept && ws.cfg.speechQuestions != nil {
 		ws.cfg.speechQuestions.ClearIf(ws.userID, questionID)
 	}
 
 	if shouldNotify {
-		ws.sendInterviewMsg(generation, ServerMsg{
+		ws.sendTrainingMsg(generation, ServerMsg{
 			Type:    "chat_reply",
 			Code:    "ANSWER_NOT_EXPECTED",
 			Content: "当前不在等待回答，或本题回答已经提交，请等待下一题。",
@@ -371,11 +372,11 @@ func (ws *WSSession) handleAnswer(content string) {
 	}
 }
 
-func (ws *WSSession) handleQuitInterview() {
-	ws.interviewMu.Lock()
+func (ws *WSSession) handleQuitTraining() {
+	ws.trainingMu.Lock()
 
-	if !ws.interviewRunning || ws.completionSent {
-		ws.interviewMu.Unlock()
+	if !ws.trainingRunning || ws.completionSent {
+		ws.trainingMu.Unlock()
 		return
 	}
 
@@ -384,10 +385,10 @@ func (ws *WSSession) handleQuitInterview() {
 	ws.completionSent = true
 	ws.awaitingAnswer = false
 	shouldSendCompletion := !ws.sessionClosed
-	if ws.interviewCancel != nil {
-		ws.interviewCancel()
+	if ws.trainingCancel != nil {
+		ws.trainingCancel()
 	}
-	ws.interviewMu.Unlock()
+	ws.trainingMu.Unlock()
 	if ws.cfg.speechQuestions != nil {
 		ws.cfg.speechQuestions.ClearIf(ws.userID, questionID)
 	}
@@ -396,23 +397,23 @@ func (ws *WSSession) handleQuitInterview() {
 	}
 }
 
-func (ws *WSSession) beginInterview() (context.Context, chan string, uint64, bool) {
-	ws.interviewMu.Lock()
-	defer ws.interviewMu.Unlock()
+func (ws *WSSession) beginTraining() (context.Context, chan string, uint64, bool) {
+	ws.trainingMu.Lock()
+	defer ws.trainingMu.Unlock()
 
-	if ws.sessionClosed || ws.interviewRunning {
+	if ws.sessionClosed || ws.trainingRunning {
 		return nil, nil, 0, false
 	}
 
 	ctx, cancel := context.WithCancel(ws.sessionCtx)
-	ws.interviewGeneration++
-	ws.interviewRunning = true
-	ws.interviewCancel = cancel
+	ws.trainingGeneration++
+	ws.trainingRunning = true
+	ws.trainingCancel = cancel
 	ws.answerCh = make(chan string, 1)
 	ws.awaitingAnswer = false
 	ws.completionSent = false
 
-	return ctx, ws.answerCh, ws.interviewGeneration, true
+	return ctx, ws.answerCh, ws.trainingGeneration, true
 }
 
 func (ws *WSSession) waitForAnswer(
@@ -420,13 +421,13 @@ func (ws *WSSession) waitForAnswer(
 	generation uint64,
 	answerCh <-chan string,
 ) (string, error) {
-	ws.interviewMu.Lock()
-	if !ws.interviewRunning || ws.interviewGeneration != generation || ws.completionSent || ws.sessionClosed {
-		ws.interviewMu.Unlock()
+	ws.trainingMu.Lock()
+	if !ws.trainingRunning || ws.trainingGeneration != generation || ws.completionSent || ws.sessionClosed {
+		ws.trainingMu.Unlock()
 		return "", graph.ErrUserQuit
 	}
 	ws.awaitingAnswer = true
-	ws.interviewMu.Unlock()
+	ws.trainingMu.Unlock()
 
 	select {
 	case answer := <-answerCh:
@@ -442,28 +443,28 @@ func (ws *WSSession) waitForAnswer(
 }
 
 func (ws *WSSession) clearAwaitingAnswer(generation uint64) {
-	ws.interviewMu.Lock()
-	if ws.interviewGeneration == generation {
+	ws.trainingMu.Lock()
+	if ws.trainingGeneration == generation {
 		ws.awaitingAnswer = false
 	}
-	ws.interviewMu.Unlock()
+	ws.trainingMu.Unlock()
 }
 
-func (ws *WSSession) sendInterviewMsg(generation uint64, msg ServerMsg) {
-	ws.interviewMu.Lock()
-	defer ws.interviewMu.Unlock()
+func (ws *WSSession) sendTrainingMsg(generation uint64, msg ServerMsg) {
+	ws.trainingMu.Lock()
+	defer ws.trainingMu.Unlock()
 
-	if ws.sessionClosed || !ws.interviewRunning || ws.interviewGeneration != generation || ws.completionSent {
+	if ws.sessionClosed || !ws.trainingRunning || ws.trainingGeneration != generation || ws.completionSent {
 		return
 	}
 	ws.sendMsg(msg)
 }
 
-func (ws *WSSession) sendInterviewQuestion(generation uint64, questionNum int, content string) {
-	ws.interviewMu.Lock()
-	defer ws.interviewMu.Unlock()
+func (ws *WSSession) sendTrainingQuestion(generation uint64, questionNum int, content string) {
+	ws.trainingMu.Lock()
+	defer ws.trainingMu.Unlock()
 
-	if ws.sessionClosed || !ws.interviewRunning || ws.interviewGeneration != generation || ws.completionSent {
+	if ws.sessionClosed || !ws.trainingRunning || ws.trainingGeneration != generation || ws.completionSent {
 		return
 	}
 
@@ -491,38 +492,38 @@ func (ws *WSSession) sendInterviewQuestion(generation uint64, questionNum int, c
 	ws.sendMsg(msg)
 }
 
-func (ws *WSSession) finishInterview(generation uint64) {
-	ws.interviewMu.Lock()
+func (ws *WSSession) finishTraining(generation uint64) {
+	ws.trainingMu.Lock()
 
-	if !ws.interviewRunning || ws.interviewGeneration != generation {
-		ws.interviewMu.Unlock()
+	if !ws.trainingRunning || ws.trainingGeneration != generation {
+		ws.trainingMu.Unlock()
 		return
 	}
 	questionID := ws.currentQuestionID
 	ws.currentQuestionID = ""
 
-	if ws.interviewCancel != nil {
-		ws.interviewCancel()
+	if ws.trainingCancel != nil {
+		ws.trainingCancel()
 	}
 	if !ws.sessionClosed && !ws.completionSent {
 		ws.completionSent = true
 		ws.sendMsg(ServerMsg{Type: "interview_complete"})
 	}
 
-	ws.interviewRunning = false
-	ws.interviewCancel = nil
+	ws.trainingRunning = false
+	ws.trainingCancel = nil
 	ws.answerCh = nil
 	ws.awaitingAnswer = false
-	ws.interviewMu.Unlock()
+	ws.trainingMu.Unlock()
 	if ws.cfg.speechQuestions != nil {
 		ws.cfg.speechQuestions.ClearIf(ws.userID, questionID)
 	}
 }
 
 func (ws *WSSession) shutdown() {
-	ws.interviewMu.Lock()
+	ws.trainingMu.Lock()
 	if ws.sessionClosed {
-		ws.interviewMu.Unlock()
+		ws.trainingMu.Unlock()
 		return
 	}
 	ws.sessionClosed = true
@@ -531,10 +532,10 @@ func (ws *WSSession) shutdown() {
 	questionID := ws.currentQuestionID
 	ws.currentQuestionID = ""
 	ws.sessionCancel()
-	if ws.interviewCancel != nil {
-		ws.interviewCancel()
+	if ws.trainingCancel != nil {
+		ws.trainingCancel()
 	}
-	ws.interviewMu.Unlock()
+	ws.trainingMu.Unlock()
 	if ws.cfg.speechQuestions != nil {
 		ws.cfg.speechQuestions.ClearIf(ws.userID, questionID)
 	}

@@ -1,24 +1,24 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 import { useChatStore } from '../store/chatStore'
 
 const stages = [
-  { key: 'jd_analysis', label: '解析标准' },
-  { key: 'resume_match', label: '诊断起点' },
+  { key: 'ability_analysis', label: '解析标准' },
+  { key: 'student_profile_analysis', label: '诊断起点' },
   { key: 'rag_retrieval', label: '检索题库' },
   { key: 'question_plan', label: '规划训练' },
-  { key: 'interview', label: '能力训练' },
+  { key: 'training', label: '能力训练' },
   { key: 'evaluation', label: '形成性评价' },
-  { key: 'review_plan', label: '提升计划' },
+  { key: 'growth_plan', label: '成长计划' },
 ]
 
 export function StageIndicator() {
-  const { currentStage, isInterviewing } = useChatStore()
+  const { currentStage, isTraining } = useChatStore()
 
-  if (!isInterviewing && !currentStage) return null
+  if (!isTraining && !currentStage) return null
 
   const currentIndex = stages.findIndex((s) => currentStage.startsWith(s.key))
 

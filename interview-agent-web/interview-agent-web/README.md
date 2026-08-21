@@ -1,6 +1,6 @@
 # StudentCoach Web
 
-StudentCoach 的学生训练交互界面，基于 React、TypeScript 和 Vite 构建。
+StudentCoach 是面向学生能力提升的 AI Growth Agent。本目录为其 React、TypeScript 和 Vite 交互界面。
 
 前端负责登录、学习目标输入、训练对话、语音交互、过程反馈、能力报告和成长计划展示。完整项目定位见[项目首页](../../README.md)。
 
@@ -13,7 +13,7 @@ StudentCoach 的学生训练交互界面，基于 React、TypeScript 和 Vite �
 - 展示能力评价报告和成长建议；
 - 上传训练资料；
 - 在后端允许时使用问题朗读和语音作答；
-- 将历史协议映射为新的学生训练消息，页面核心状态不消费招聘字段。
+- 将历史协议映射为新的学生训练消息，页面核心状态不消费历史字段。
 
 ## 技术栈
 

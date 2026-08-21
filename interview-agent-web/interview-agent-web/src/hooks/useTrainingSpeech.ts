@@ -7,11 +7,11 @@ import {
 } from '../api/speech'
 import type { SpeakableQuestion, SpeechCapabilities, SpeechState } from '../types/speech'
 
-interface UseInterviewSpeechOptions {
+interface UseTrainingSpeechOptions {
   onDraftReady?: (questionId: string, text: string) => void
 }
 
-interface UseInterviewSpeechResult {
+interface UseTrainingSpeechResult {
   state: SpeechState
   capabilities: SpeechCapabilities | null
   available: boolean
@@ -60,10 +60,10 @@ function publicRecordingError(error: unknown): string {
   return '语音识别启动失败，请改用键盘输入'
 }
 
-export function useInterviewSpeech(
+export function useTrainingSpeech(
   token: string | null,
-  options: UseInterviewSpeechOptions = {},
-): UseInterviewSpeechResult {
+  options: UseTrainingSpeechOptions = {},
+): UseTrainingSpeechResult {
   const [state, setState] = useState<SpeechState>({ kind: 'disabled' })
   const [capabilityResult, setCapabilityResult] = useState<{
     token: string
@@ -474,7 +474,7 @@ export function useInterviewSpeech(
       const stream = mediaStreamRef.current
       if (!stream) throw new ASRClientError('麦克风连接已关闭，请重新录制', 'MIC_CLOSED')
       const source = context.createMediaStreamSource(stream)
-      const worklet = new AudioWorkletNode(context, 'interview-pcm-capture', {
+      const worklet = new AudioWorkletNode(context, 'training-pcm-capture', {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [1],

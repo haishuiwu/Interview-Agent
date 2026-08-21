@@ -1,6 +1,6 @@
 # StudentCoach Backend
 
-StudentCoach 的 Go 后端，负责学生能力训练编排、业务规则、数据服务、长期能力画像、检索、实时交互和自动评测。
+StudentCoach 是面向学生能力提升的 AI Growth Agent。本目录为其 Go 后端，负责训练编排、业务规则、数据服务、长期能力画像、检索、实时交互和自动评测。
 
 如果你第一次了解项目，请先阅读[项目首页](../../README.md)。
 
@@ -35,7 +35,7 @@ StudentCoach 的 Go 后端，负责学生能力训练编排、业务规则、数
 6. StudentGrowthService 更新能力画像并保存 GrowthRecord。
 7. GrowthPlanner 根据本轮结果生成下一步成长计划。
 
-Eino Graph 的节点和边没有改变。部分文件名、节点标识和命令名为兼容历史版本而保留，但核心运行时使用学生能力训练语义。
+Eino Graph 的流程与拓扑没有改变；Agent 文件和节点标识使用学生能力训练语义，历史命令名仅在 CLI adapter 中保留。
 
 ## 长期能力画像
 
@@ -139,7 +139,7 @@ interview 是历史兼容命令名，新的业务语义仍为学生能力训练�
 | POST /api/speech/tts | 文本转语音 |
 | /ws/speech/asr | 实时语音识别 WebSocket |
 
-新的训练请求使用 learning_goal 和 student_profile。后端仍在兼容 DTO 中接收旧协议，并在进入核心运行时前转换；新增调用方不应继续使用历史招聘字段。
+新的训练请求使用 learning_goal 和 student_profile。后端仍在兼容 DTO 中接收旧协议，并在进入核心运行时前转换；新增调用方不应继续使用历史字段。
 
 ## 语音能力
 

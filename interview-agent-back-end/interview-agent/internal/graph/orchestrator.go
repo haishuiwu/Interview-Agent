@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 // Package graph 用 Eino compose.Graph 编排学生能力训练全流程。
@@ -27,6 +27,7 @@ import (
 	imodel "interview-agent/internal/model"
 	"interview-agent/internal/rag"
 	growthservice "interview-agent/internal/service"
+	educationtool "interview-agent/internal/tool"
 )
 
 // ErrUserQuit 用户主动终止面试
@@ -55,6 +56,9 @@ type Orchestrator struct {
 
 	// 学生成长业务服务（聚合能力画像并保存成长记录）
 	growthService *growthservice.StudentGrowthDataService
+
+	// 项目内部业务 Trace（不改变 Graph 节点与边）。
+	traceService *growthservice.AgentTraceService
 }
 
 // OrchestratorConfig 编排器配置
@@ -68,6 +72,7 @@ type OrchestratorConfig struct {
 	RerankerType   string              // 重排策略：cross-encoder（默认）/ llm / none
 	RerankModel    string              // cross-encoder 重排模型名（默认 gte-rerank-v2）
 	APIKey         string              // DashScope API Key（cross-encoder rerank 调用用）
+	TraceService   *growthservice.AgentTraceService
 }
 
 // newReranker 按配置选择重排策略，默认 cross-encoder（仅显式 llm / none 才切换）。
@@ -97,6 +102,10 @@ func newReranker(cfg *OrchestratorConfig) rag.RerankStrategy {
 
 // NewOrchestrator 创建编排器
 func NewOrchestrator(cfg *OrchestratorConfig) *Orchestrator {
+	traceService := cfg.TraceService
+	if traceService == nil {
+		traceService = growthservice.NewAgentTraceService(cfg.Store)
+	}
 	o := &Orchestrator{
 		abilityAnalyzer:        agent.NewAbilityAnalyzer(cfg.ChatModel),
 		studentProfileAnalyzer: agent.NewStudentProfileAnalyzer(cfg.ChatModel),
@@ -111,6 +120,7 @@ func NewOrchestrator(cfg *OrchestratorConfig) *Orchestrator {
 		reranker:               newReranker(cfg),
 		mysqlStore:             cfg.MySQLStore,
 		growthService:          growthservice.NewStudentGrowthDataService(cfg.Store, cfg.MySQLStore, cfg.MilvusStore, cfg.BM25Manager),
+		traceService:           traceService,
 	}
 
 	// 设置 GitHub MCP 搜索器（可选）
@@ -147,25 +157,36 @@ type trainingCtx struct {
 	trainingState     *imodel.TrainingState
 	report            *imodel.EvaluationReport
 	abilityProfile    *imodel.StudentAbilityProfile
+	abilityBefore     map[string]float64
+	traceSkillBound   bool
 	userTerminated    bool
 }
 
 // RunTraining 执行完整能力训练流程。Graph 节点与边保持历史结构不变。
 func (o *Orchestrator) RunTraining(ctx context.Context, abilityStandardText string, studentProfileText string, userID string, cb *TrainingCallbacks) (*imodel.Session, error) {
+	sessionID := uuid.New().String()
 	ic := &trainingCtx{abilityStandardText: abilityStandardText, studentProfileText: studentProfileText, userID: userID, cb: cb}
+	ic.session = &imodel.Session{ID: sessionID, UserID: userID, StudentID: userID, Status: imodel.StatusInit, CreatedAt: time.Now()}
+	if o.traceService != nil {
+		if _, err := o.traceService.Create(ctx, sessionID, userID, traceIntentForGoal(abilityStandardText)); err != nil {
+			log.Printf("[AgentTrace] 创建失败（不影响训练主流程）: %v", err)
+		} else {
+			ctx = educationtool.WithTrace(ctx, sessionID, o.traceService)
+		}
+	}
 
 	g := compose.NewGraph[string, string]()
 
-	_ = g.AddLambdaNode("jd_analysis", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
+	_ = g.AddLambdaNode("ability_analysis", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
 		return "", o.nodeAbilityAnalysis(ctx, ic)
 	}))
-	_ = g.AddLambdaNode("resume_match", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
+	_ = g.AddLambdaNode("student_profile_analysis", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
 		return "", o.nodeStudentProfileAnalysis(ctx, ic)
 	}))
 	_ = g.AddLambdaNode("question_plan", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
 		return "", o.nodeQuestionPlan(ctx, ic)
 	}))
-	_ = g.AddLambdaNode("interview", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
+	_ = g.AddLambdaNode("training", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
 		return "", o.nodeTraining(ctx, ic)
 	}))
 	_ = g.AddLambdaNode("weak_review", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
@@ -174,30 +195,35 @@ func (o *Orchestrator) RunTraining(ctx context.Context, abilityStandardText stri
 	_ = g.AddLambdaNode("evaluation", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
 		return "", o.nodeEvaluation(ctx, ic)
 	}))
-	_ = g.AddLambdaNode("review_plan", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
+	_ = g.AddLambdaNode("growth_plan", compose.InvokableLambda(func(ctx context.Context, _ string) (string, error) {
 		return "", o.nodeGrowthPlan(ctx, ic)
 	}))
 
-	_ = g.AddEdge(compose.START, "jd_analysis")
-	_ = g.AddEdge("jd_analysis", "resume_match")
-	_ = g.AddEdge("resume_match", "question_plan")
-	_ = g.AddEdge("question_plan", "interview")
-	// interview 之后的条件分支：用户未作答即终止 → END；否则 → weak_review
-	_ = g.AddBranch("interview", compose.NewGraphBranch(
+	_ = g.AddEdge(compose.START, "ability_analysis")
+	_ = g.AddEdge("ability_analysis", "student_profile_analysis")
+	_ = g.AddEdge("student_profile_analysis", "question_plan")
+	_ = g.AddEdge("question_plan", "training")
+	// training 之后的条件分支：用户未作答即终止 → END；否则 → weak_review
+	_ = g.AddBranch("training", compose.NewGraphBranch(
 		func(ctx context.Context, _ string) (string, error) { return o.afterTraining(ic), nil },
 		map[string]bool{"weak_review": true, compose.END: true}))
 	_ = g.AddEdge("weak_review", "evaluation")
-	_ = g.AddEdge("evaluation", "review_plan")
-	_ = g.AddEdge("review_plan", compose.END)
+	_ = g.AddEdge("evaluation", "growth_plan")
+	_ = g.AddEdge("growth_plan", compose.END)
 
 	runnable, err := g.Compile(ctx)
 	if err != nil {
+		o.markTraceStatus(ctx, sessionID, imodel.AgentTraceStatusFailed)
 		return nil, fmt.Errorf("orchestrator: compile graph: %w", err)
 	}
 	log.Printf("[Orchestrator] 学生能力训练 compose.Graph 已编译，开始执行")
 
 	if _, err := runnable.Invoke(ctx, ""); err != nil {
+		o.markTraceStatus(ctx, sessionID, imodel.AgentTraceStatusFailed)
 		return nil, err
+	}
+	if ic.userTerminated {
+		o.markTraceStatus(ctx, sessionID, imodel.AgentTraceStatusTerminated)
 	}
 
 	return ic.session, nil
@@ -209,15 +235,7 @@ func (o *Orchestrator) RunTraining(ctx context.Context, abilityStandardText stri
 
 // nodeAbilityAnalysis 阶段 1：能力标准分析。
 func (o *Orchestrator) nodeAbilityAnalysis(ctx context.Context, ic *trainingCtx) error {
-	ic.session = &imodel.Session{
-		ID:        uuid.New().String(),
-		UserID:    ic.userID,
-		StudentID: ic.userID,
-		Status:    imodel.StatusInit,
-		CreatedAt: time.Now(),
-	}
-
-	ic.cb.OnStageChange("jd_analysis", "正在解析学习目标与能力标准...")
+	ic.cb.OnStageChange("ability_analysis", "正在解析学习目标与能力标准...")
 
 	standard, err := o.abilityAnalyzer.Analyze(ctx, ic.abilityStandardText)
 	if err != nil {
@@ -226,14 +244,24 @@ func (o *Orchestrator) nodeAbilityAnalysis(ctx context.Context, ic *trainingCtx)
 	ic.abilityStandard = standard
 	ic.session.AbilityStandard = standard
 	ic.session.Status = imodel.StatusAbilityAnalyzed
+	if o.traceService != nil {
+		traceGoal := standard.LearningGoal
+		if imodel.NormalizeAbilityDimension(traceGoal) == "" {
+			traceGoal = ic.abilityStandardText
+		}
+		_ = o.traceService.UpdateIntent(ctx, ic.session.ID, traceIntentForGoal(traceGoal))
+		if skillName, reason := traceSkillDecision(traceGoal); skillName != "" {
+			_ = o.traceService.UpdateSkill(ctx, ic.session.ID, skillName, reason)
+		}
+	}
 
-	ic.cb.OnStageChange("jd_analysis_done", fmt.Sprintf("能力标准解析完成：%s", standard.LearningGoal))
+	ic.cb.OnStageChange("ability_analysis_done", fmt.Sprintf("能力标准解析完成：%s", standard.LearningGoal))
 	return nil
 }
 
 // nodeStudentProfileAnalysis 阶段 2：学生画像分析。
 func (o *Orchestrator) nodeStudentProfileAnalysis(ctx context.Context, ic *trainingCtx) error {
-	ic.cb.OnStageChange("resume_match", "正在建立学生能力训练起点...")
+	ic.cb.OnStageChange("student_profile_analysis", "正在建立学生能力训练起点...")
 
 	ic.studentProfile = &imodel.StudentProfile{
 		StudentID:    ic.userID,
@@ -243,6 +271,9 @@ func (o *Orchestrator) nodeStudentProfileAnalysis(ctx context.Context, ic *train
 		RawText:      ic.studentProfileText,
 	}
 	ic.session.StudentProfile = ic.studentProfile
+	if o.traceService != nil {
+		_ = o.traceService.RecordMemorySummary(ctx, ic.session.ID, "student_profile=available")
+	}
 
 	diagnosis, err := o.studentProfileAnalyzer.Analyze(ctx, ic.abilityStandard, ic.studentProfile)
 	if err != nil {
@@ -252,7 +283,7 @@ func (o *Orchestrator) nodeStudentProfileAnalysis(ctx context.Context, ic *train
 	ic.session.LearningDiagnosis = diagnosis
 	ic.session.Status = imodel.StatusStudentProfileAnalyzed
 
-	ic.cb.OnStageChange("resume_match_done", fmt.Sprintf("学生画像诊断完成，当前能力证据覆盖度：%.0f%%", diagnosis.OverallScore))
+	ic.cb.OnStageChange("student_profile_analysis_done", fmt.Sprintf("学生画像诊断完成，当前能力证据覆盖度：%.0f%%", diagnosis.OverallScore))
 	return nil
 }
 
@@ -270,6 +301,14 @@ func (o *Orchestrator) nodeQuestionPlan(ctx context.Context, ic *trainingCtx) er
 		log.Printf("[Profile] 读取长期能力画像失败（继续使用本轮画像）: %v", profileErr)
 	} else {
 		ic.abilityProfile = abilityProfile
+		ic.abilityBefore = copyTraceScores(abilityProfile.AbilityScores)
+		if o.traceService != nil {
+			summaries := traceAbilitySummaries(abilityProfile.AbilityScores)
+			if len(summaries) == 0 {
+				summaries = append(summaries, "ability_profile=empty")
+			}
+			_ = o.traceService.RecordMemorySummary(ctx, ic.session.ID, summaries...)
+		}
 		for _, ability := range imodel.CoreAbilityDimensions() {
 			if score, ok := abilityProfile.AbilityScores[ability]; ok {
 				memoryLines = append(memoryLines, fmt.Sprintf("- %s：长期能力分 %.0f%%", ability, score*100))
@@ -277,6 +316,9 @@ func (o *Orchestrator) nodeQuestionPlan(ctx context.Context, ic *trainingCtx) er
 		}
 	}
 	weakPoints := o.longTermMem.GetWeakPoints(ctx, userID)
+	if o.traceService != nil {
+		_ = o.traceService.RecordMemorySummary(ctx, ic.session.ID, fmt.Sprintf("growth_history_weaknesses=%d", len(weakPoints)))
+	}
 	if len(weakPoints) > 0 {
 		standardAbilities := collectStandardAbilities(standard)
 		for _, wp := range weakPoints {
@@ -472,7 +514,7 @@ func (o *Orchestrator) nodeTraining(ctx context.Context, ic *trainingCtx) error 
 	plan := ic.plan
 	userID := ic.userID
 
-	ic.cb.OnStageChange("interview", "学生能力训练正式开始！")
+	ic.cb.OnStageChange("training", "学生能力训练正式开始！")
 
 	// 训练分三个阶段顺序进行：基础理解 → 实践应用 → 综合情境。
 	// 阶段化取题与阶段内难度调节由 stageScheduler 负责（见 stage_scheduler.go）：
@@ -521,15 +563,27 @@ func (o *Orchestrator) nodeTraining(ctx context.Context, ic *trainingCtx) error 
 		if err != nil {
 			return fmt.Errorf("orchestrator: ask question %d: %w", asked, err)
 		}
+		questionText = strings.TrimSpace(questionText)
+		attempt := newTrainingAttempt(userID, q, questionText, q.Reference, imodel.TrainingAttemptTypePrimary, "")
+		state.TrainingAttempts = append(state.TrainingAttempts, attempt)
+		if o.traceService != nil {
+			if !ic.traceSkillBound {
+				_ = o.traceService.UpdateSkill(ctx, ic.session.ID, attempt.SkillName, traceAttemptDecisionReason(attempt))
+				ic.traceSkillBound = true
+			}
+			_ = o.traceService.BindTrainingAttempt(ctx, ic.session.ID, attempt.ID)
+		}
+
 		// 标注题目来源
+		displayQuestion := questionText
 		if q.Source != "" && q.Source != "llm" {
-			questionText += fmt.Sprintf("\n\n`[来源: 题库 %s]`", q.Source)
+			displayQuestion += fmt.Sprintf("\n\n`[来源: 题库 %s]`", q.Source)
 		} else {
-			questionText += "\n\n`[来源: LLM 出题]`"
+			displayQuestion += "\n\n`[来源: LLM 出题]`"
 		}
 
 		// 发送题目到前端
-		ic.cb.OnQuestion(asked, questionText)
+		ic.cb.OnQuestion(asked, displayQuestion)
 
 		// 等待用户回答
 		answer, err := ic.cb.GetUserAnswer()
@@ -541,16 +595,17 @@ func (o *Orchestrator) nodeTraining(ctx context.Context, ic *trainingCtx) error 
 			}
 			return fmt.Errorf("orchestrator: get answer: %w", err)
 		}
+		attempt.RecordAnswer(answer)
 
 		// 评分
-		score, err := o.studentCoach.ScoreAnswer(ctx, &q, answer)
+		score, err := o.studentCoach.ScoreTrainingAttempt(ctx, attempt)
 		if err != nil {
 			return fmt.Errorf("orchestrator: score answer %d: %w", asked, err)
 		}
 		ic.cb.OnScore(score)
 
 		// 更新学生能力画像
-		updatedProfile, profileErr := o.studentCoach.UpdateStudentAbilityProfile(ctx, state.StudentAbilityProfile, asked, &q, score)
+		updatedProfile, profileErr := o.studentCoach.UpdateStudentAbilityProfileFromAttempt(ctx, state.StudentAbilityProfile, asked, attempt)
 		if profileErr != nil {
 			log.Printf("[Profile] 画像更新失败（不影响主流程）: %v", profileErr)
 		} else {
@@ -558,8 +613,12 @@ func (o *Orchestrator) nodeTraining(ctx context.Context, ic *trainingCtx) error 
 		}
 
 		// 记录问答
+		askedQuestion := q
+		askedQuestion.Content = attempt.Question
+		askedQuestion.Reference = attempt.ReferenceAnswer
 		qa := imodel.QAPair{
-			Question:   q,
+			AttemptID:  attempt.ID,
+			Question:   askedQuestion,
 			UserAnswer: answer,
 			Score:      score.Score,
 			Feedback:   score.Feedback,
@@ -571,17 +630,23 @@ func (o *Orchestrator) nodeTraining(ctx context.Context, ic *trainingCtx) error 
 			len(score.KeyPointsMissed) > 0
 
 		if shouldFollowUp {
-			followUpText, fErr := o.studentCoach.FollowUp(ctx, state, &q, answer, score.Feedback, score.KeyPointsMissed, standard.LearningGoal)
+			followUpText, fErr := o.studentCoach.FollowUp(ctx, state, &askedQuestion, answer, score.Feedback, score.KeyPointsMissed, standard.LearningGoal)
 			if fErr == nil {
+				followUpText = strings.TrimSpace(followUpText)
+				followUpReference := strings.Join(score.KeyPointsMissed, "；")
+				followUpAttempt := newTrainingAttempt(userID, q, followUpText, followUpReference, imodel.TrainingAttemptTypeFollowUp, attempt.ID)
+				state.TrainingAttempts = append(state.TrainingAttempts, followUpAttempt)
 				ic.cb.OnQuestion(asked, "[追问] "+followUpText)
 
 				followUpAnswer, faErr := ic.cb.GetUserAnswer()
 				if faErr == nil {
 					qa.FollowUpUsed = true
+					qa.FollowUpAttemptID = followUpAttempt.ID
 					qa.UserAnswer += "\n[追问回答] " + followUpAnswer
+					followUpAttempt.RecordAnswer(followUpAnswer)
 
 					// 对追问回答评分并反馈
-					followUpScore, fsErr := o.studentCoach.ScoreAnswer(ctx, &q, followUpAnswer)
+					followUpScore, fsErr := o.studentCoach.ScoreTrainingAttempt(ctx, followUpAttempt)
 					if fsErr == nil {
 						ic.cb.OnScore(followUpScore)
 					}
@@ -724,20 +789,24 @@ func (o *Orchestrator) nodeEvaluation(ctx context.Context, ic *trainingCtx) erro
 		return fmt.Errorf("orchestrator: evaluate: %w", err)
 	}
 	profileUpdate, err := o.growthService.UpdateAbilityProfile(ctx, ic.userID, growthservice.GrowthRecordInput{
-		SessionID:     report.SessionID,
-		LearningGoal:  report.LearningGoal,
-		OverallScore:  report.OverallScore,
-		AbilityScores: report.AbilityScores,
-		Strengths:     report.Strengths,
-		Weaknesses:    report.Weaknesses,
-		Summary:       report.Summary,
-		TrainingTime:  report.CreatedAt,
+		SessionID:        report.SessionID,
+		TrainingAttempts: report.TrainingAttempts,
+		LearningGoal:     report.LearningGoal,
+		OverallScore:     report.OverallScore,
+		AbilityScores:    report.AbilityScores,
+		Strengths:        report.Strengths,
+		Weaknesses:       report.Weaknesses,
+		Summary:          report.Summary,
+		TrainingTime:     report.CreatedAt,
 	})
 	if err != nil {
 		return fmt.Errorf("orchestrator: update ability profile: %w", err)
 	}
 	state.StudentAbilityProfile = profileUpdate.Profile
 	ic.abilityProfile = profileUpdate.Profile
+	if o.traceService != nil {
+		_ = o.traceService.SaveAbilityChanges(ctx, ic.session.ID, ic.abilityBefore, profileUpdate.Profile.AbilityScores)
+	}
 	ic.report = report
 	ic.session.Report = report
 
@@ -748,7 +817,7 @@ func (o *Orchestrator) nodeEvaluation(ctx context.Context, ic *trainingCtx) erro
 
 // nodeGrowthPlan 阶段 6：生成成长计划 + 持久化训练记录。
 func (o *Orchestrator) nodeGrowthPlan(ctx context.Context, ic *trainingCtx) error {
-	ic.cb.OnStageChange("review_plan", "正在生成学生能力提升计划...")
+	ic.cb.OnStageChange("growth_plan", "正在生成学生能力提升计划...")
 
 	reviewPlan, err := o.growthPlanner.Plan(ctx, ic.report)
 	if err != nil {
@@ -776,6 +845,79 @@ func (o *Orchestrator) nodeGrowthPlan(ctx context.Context, ic *trainingCtx) erro
 
 	ic.cb.OnStageChange("completed", "本轮学生能力训练已完成！")
 	return nil
+}
+
+func newTrainingAttempt(studentID string, planned imodel.PlannedQuestion, question, reference, attemptType, parentAttemptID string) *imodel.TrainingAttempt {
+	now := time.Now()
+	return &imodel.TrainingAttempt{
+		ID:              uuid.New().String(),
+		StudentID:       studentID,
+		SkillName:       imodel.SkillNameForQuestion(planned),
+		TrainingTask:    planned.Content,
+		Question:        question,
+		ReferenceAnswer: reference,
+		Rubric:          imodel.EvaluationRubricForQuestion(planned),
+		AbilityChanges:  map[string]float64{},
+		Status:          imodel.TrainingAttemptStatusPresented,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ParentAttemptID: parentAttemptID,
+		AttemptType:     attemptType,
+	}
+}
+
+func traceIntentForGoal(goal string) string {
+	ability := imodel.NormalizeAbilityDimension(goal)
+	if ability == "" {
+		return "ability training"
+	}
+	return "improve " + ability
+}
+
+func traceSkillDecision(goal string) (string, string) {
+	ability := imodel.NormalizeAbilityDimension(goal)
+	if ability == "" {
+		return "", ""
+	}
+	return imodel.AbilitySkillName(ability), fmt.Sprintf("learning goal targets %s ability", ability)
+}
+
+func traceAttemptDecisionReason(attempt *imodel.TrainingAttempt) string {
+	if attempt == nil {
+		return "selected by the training plan"
+	}
+	ability := imodel.NormalizeAbilityDimension(attempt.SkillName)
+	if ability == "" && len(attempt.Rubric) > 0 {
+		ability = imodel.NormalizeAbilityDimension(attempt.Rubric[0].Ability)
+	}
+	if ability == "" {
+		return "selected by the training plan"
+	}
+	return fmt.Sprintf("training task targets %s ability", ability)
+}
+
+func traceAbilitySummaries(scores map[string]float64) []string {
+	summaries := make([]string, 0, len(scores))
+	for _, ability := range imodel.CoreAbilityDimensions() {
+		if score, ok := scores[ability]; ok {
+			summaries = append(summaries, fmt.Sprintf("%s=%.2f", ability, score))
+		}
+	}
+	return summaries
+}
+
+func copyTraceScores(scores map[string]float64) map[string]float64 {
+	result := make(map[string]float64, len(scores))
+	for ability, score := range scores {
+		result[ability] = score
+	}
+	return result
+}
+
+func (o *Orchestrator) markTraceStatus(ctx context.Context, sessionID, status string) {
+	if o.traceService != nil {
+		_ = o.traceService.UpdateStatus(ctx, sessionID, status)
+	}
 }
 
 // formatRAGDocs 格式化 RAG 召回的文档作为出题参考

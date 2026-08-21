@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 // Package model 定义学生能力提升系统的核心数据模型。
@@ -245,13 +245,14 @@ func AbilitySkillName(ability string) string {
 
 // AbilityGrowthRecord 记录一次训练前后的可追溯能力变化。
 type AbilityGrowthRecord struct {
-	SessionID    string             `json:"session_id"`
-	LearningGoal string             `json:"learning_goal"`
-	BeforeScores map[string]float64 `json:"before_scores,omitempty"`
-	AfterScores  map[string]float64 `json:"after_scores,omitempty"`
-	ScoreChanges map[string]float64 `json:"score_changes,omitempty"`
-	OverallScore float64            `json:"overall_score"`
-	TrainingTime time.Time          `json:"training_time"`
+	SessionID          string             `json:"session_id"`
+	TrainingAttemptIDs []string           `json:"training_attempt_ids,omitempty"`
+	LearningGoal       string             `json:"learning_goal"`
+	BeforeScores       map[string]float64 `json:"before_scores,omitempty"`
+	AfterScores        map[string]float64 `json:"after_scores,omitempty"`
+	ScoreChanges       map[string]float64 `json:"score_changes,omitempty"`
+	OverallScore       float64            `json:"overall_score"`
+	TrainingTime       time.Time          `json:"training_time"`
 }
 
 // StudentAbilityProfile 是跨训练持续维护的结构化学生能力画像，分数范围为 0 到 1。
@@ -274,16 +275,19 @@ type TrainingState struct {
 	ConsecutiveRight      int                    `json:"consecutive_right"`                 // 连续答对
 	ConsecutiveWrong      int                    `json:"consecutive_wrong"`                 // 连续答错
 	QAHistory             []QAPair               `json:"qa_history"`                        // 问答历史
+	TrainingAttempts      []*TrainingAttempt     `json:"training_attempts,omitempty"`       // 训练事实，评价与成长记录的唯一追溯来源
 	StudentAbilityProfile *StudentAbilityProfile `json:"student_ability_profile,omitempty"` // 训练中动态更新的学生能力画像
 }
 
 // QAPair 单次问答记录
 type QAPair struct {
-	Question     PlannedQuestion `json:"question"`
-	UserAnswer   string          `json:"user_answer"`
-	Score        float64         `json:"score"`          // 本题得分（0-100）
-	Feedback     string          `json:"feedback"`       // 即时反馈
-	FollowUpUsed bool            `json:"follow_up_used"` // 是否进行了追问
+	AttemptID         string          `json:"attempt_id,omitempty"`
+	FollowUpAttemptID string          `json:"follow_up_attempt_id,omitempty"`
+	Question          PlannedQuestion `json:"question"`
+	UserAnswer        string          `json:"user_answer"`
+	Score             float64         `json:"score"`          // 本题得分（0-100）
+	Feedback          string          `json:"feedback"`       // 即时反馈
+	FollowUpUsed      bool            `json:"follow_up_used"` // 是否进行了追问
 }
 
 // ============================================================
@@ -292,25 +296,27 @@ type QAPair struct {
 
 // EvaluationReport 学生能力训练评估报告。
 type EvaluationReport struct {
-	SessionID       string             `json:"session_id"`
-	StudentID       string             `json:"student_id"`
-	StudentName     string             `json:"student_name"`
-	Grade           string             `json:"grade,omitempty"`
-	Subject         string             `json:"subject,omitempty"`
-	LearningGoal    string             `json:"learning_goal"`
-	OverallScore    float64            `json:"overall_score"`    // 综合得分
-	OverallLevel    string             `json:"overall_level"`    // 综合评级（A/B/C/D）
-	AbilityScores   map[string]float64 `json:"ability_scores"`   // 各能力维度得分
-	TrainingMetrics map[string]float64 `json:"training_metrics"` // 由会话事实确定性计算的训练指标
-	Strengths       []string           `json:"strengths"`        // 表现优秀的方面
-	Weaknesses      []string           `json:"weaknesses"`       // 需要提升的方面
-	DetailedReview  []QuestionReview   `json:"detailed_review"`  // 逐题点评
-	Summary         string             `json:"summary"`          // 综合评语
-	CreatedAt       time.Time          `json:"created_at"`
+	SessionID        string             `json:"session_id"`
+	StudentID        string             `json:"student_id"`
+	StudentName      string             `json:"student_name"`
+	Grade            string             `json:"grade,omitempty"`
+	Subject          string             `json:"subject,omitempty"`
+	LearningGoal     string             `json:"learning_goal"`
+	OverallScore     float64            `json:"overall_score"`               // 综合得分
+	OverallLevel     string             `json:"overall_level"`               // 综合评级（A/B/C/D）
+	AbilityScores    map[string]float64 `json:"ability_scores"`              // 各能力维度得分
+	TrainingMetrics  map[string]float64 `json:"training_metrics"`            // 由会话事实确定性计算的训练指标
+	Strengths        []string           `json:"strengths"`                   // 表现优秀的方面
+	Weaknesses       []string           `json:"weaknesses"`                  // 需要提升的方面
+	DetailedReview   []QuestionReview   `json:"detailed_review"`             // 逐题点评
+	TrainingAttempts []*TrainingAttempt `json:"training_attempts,omitempty"` // 形成报告所依据的训练事实
+	Summary          string             `json:"summary"`                     // 综合评语
+	CreatedAt        time.Time          `json:"created_at"`
 }
 
 // QuestionReview 单题点评
 type QuestionReview struct {
+	AttemptID       string   `json:"attempt_id,omitempty"`
 	QuestionContent string   `json:"question_content"`
 	UserAnswer      string   `json:"user_answer"`
 	Score           float64  `json:"score"`

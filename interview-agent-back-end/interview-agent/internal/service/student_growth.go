@@ -75,14 +75,15 @@ type TrainingTaskRecommendation struct {
 
 // GrowthRecordInput 是保存一轮成长结果所需的数据。
 type GrowthRecordInput struct {
-	SessionID     string             `json:"session_id,omitempty"`
-	LearningGoal  string             `json:"learning_goal"`
-	OverallScore  float64            `json:"overall_score"`
-	AbilityScores map[string]float64 `json:"ability_scores,omitempty"`
-	Strengths     []string           `json:"strengths,omitempty"`
-	Weaknesses    []string           `json:"weaknesses,omitempty"`
-	Summary       string             `json:"summary,omitempty"`
-	TrainingTime  time.Time          `json:"training_time,omitempty"`
+	SessionID        string                    `json:"session_id,omitempty"`
+	TrainingAttempts []*imodel.TrainingAttempt `json:"training_attempts,omitempty"`
+	LearningGoal     string                    `json:"learning_goal"`
+	OverallScore     float64                   `json:"overall_score"`
+	AbilityScores    map[string]float64        `json:"ability_scores,omitempty"`
+	Strengths        []string                  `json:"strengths,omitempty"`
+	Weaknesses       []string                  `json:"weaknesses,omitempty"`
+	Summary          string                    `json:"summary,omitempty"`
+	TrainingTime     time.Time                 `json:"training_time,omitempty"`
 }
 
 // SavedGrowthRecord 是保存结果的确认信息。
@@ -222,13 +223,14 @@ func (s *StudentGrowthDataService) UpdateAbilityProfile(ctx context.Context, stu
 	profile.Weaknesses = mergeProfileStatements(profile.Weaknesses, input.Weaknesses, 12)
 	profile.LastTrainingTime = trainingTime
 	profile.GrowthHistory = append(profile.GrowthHistory, imodel.AbilityGrowthRecord{
-		SessionID:    input.SessionID,
-		LearningGoal: input.LearningGoal,
-		BeforeScores: before,
-		AfterScores:  cloneScores(profile.AbilityScores),
-		ScoreChanges: changes,
-		OverallScore: input.OverallScore,
-		TrainingTime: trainingTime,
+		SessionID:          input.SessionID,
+		TrainingAttemptIDs: trainingAttemptIDs(input.TrainingAttempts),
+		LearningGoal:       input.LearningGoal,
+		BeforeScores:       before,
+		AfterScores:        cloneScores(profile.AbilityScores),
+		ScoreChanges:       changes,
+		OverallScore:       input.OverallScore,
+		TrainingTime:       trainingTime,
 	})
 	if len(profile.GrowthHistory) > 50 {
 		profile.GrowthHistory = profile.GrowthHistory[len(profile.GrowthHistory)-50:]
@@ -323,6 +325,19 @@ func (s *StudentGrowthDataService) GetAbilityReport(ctx context.Context, student
 		Summary:       report.Summary,
 		CreatedAt:     report.CreatedAt,
 	}, nil
+}
+
+// GetLatestTrainingAttempts 从最近一次已保存评价报告读取训练事实。
+// 该只读方法供成长 Dashboard 聚合使用，不改变 Tool 暴露面。
+func (s *StudentGrowthDataService) GetLatestTrainingAttempts(ctx context.Context, studentID string) ([]*imodel.TrainingAttempt, error) {
+	if s.mysqlStore == nil {
+		return []*imodel.TrainingAttempt{}, nil
+	}
+	report, err := s.mysqlStore.LoadLatestEvaluationReport(ctx, studentID)
+	if err != nil || report == nil {
+		return []*imodel.TrainingAttempt{}, err
+	}
+	return append([]*imodel.TrainingAttempt(nil), report.TrainingAttempts...), nil
 }
 
 func (s *StudentGrowthDataService) SearchTrainingCases(ctx context.Context, studentID, abilityGap string, limit int) ([]TrainingCase, error) {
@@ -458,15 +473,16 @@ func (s *StudentGrowthDataService) SaveGrowthRecord(ctx context.Context, student
 
 	if s.mysqlStore != nil {
 		report := &imodel.EvaluationReport{
-			SessionID:     input.SessionID,
-			StudentID:     studentID,
-			LearningGoal:  input.LearningGoal,
-			OverallScore:  input.OverallScore,
-			AbilityScores: input.AbilityScores,
-			Strengths:     input.Strengths,
-			Weaknesses:    input.Weaknesses,
-			Summary:       input.Summary,
-			CreatedAt:     now,
+			SessionID:        input.SessionID,
+			StudentID:        studentID,
+			LearningGoal:     input.LearningGoal,
+			OverallScore:     input.OverallScore,
+			AbilityScores:    input.AbilityScores,
+			Strengths:        input.Strengths,
+			Weaknesses:       input.Weaknesses,
+			Summary:          input.Summary,
+			TrainingAttempts: input.TrainingAttempts,
+			CreatedAt:        now,
 		}
 		reportJSON, err := json.Marshal(report)
 		if err != nil {
@@ -482,6 +498,19 @@ func (s *StudentGrowthDataService) SaveGrowthRecord(ctx context.Context, student
 	}
 
 	return &SavedGrowthRecord{StudentID: studentID, SessionID: input.SessionID, SavedAt: now}, nil
+}
+
+func trainingAttemptIDs(attempts []*imodel.TrainingAttempt) []string {
+	ids := make([]string, 0, len(attempts))
+	seen := make(map[string]bool)
+	for _, attempt := range attempts {
+		if attempt == nil || attempt.ID == "" || attempt.EvaluationResult == nil || seen[attempt.ID] {
+			continue
+		}
+		seen[attempt.ID] = true
+		ids = append(ids, attempt.ID)
+	}
+	return ids
 }
 
 // RecommendStartingDifficulty 根据已记录的最低能力分选择下一轮起始难度。

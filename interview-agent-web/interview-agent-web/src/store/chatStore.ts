@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 import { create } from 'zustand'
@@ -9,12 +9,12 @@ import type { ChatMessage, ServerMessage } from '../types/message'
 interface ChatState {
   messages: ChatMessage[]
   connected: boolean
-  isInterviewing: boolean
+  isTraining: boolean
   currentStage: string
 
   addMessage: (msg: ChatMessage) => void
   setConnected: (v: boolean) => void
-  setInterviewing: (v: boolean) => void
+  setTraining: (v: boolean) => void
   handleServerMessage: (msg: ServerMessage) => void
   clearMessages: () => void
 }
@@ -25,14 +25,14 @@ const nextId = () => String(++msgId)
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   connected: false,
-  isInterviewing: false,
+  isTraining: false,
   currentStage: '',
 
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
 
   setConnected: (connected) => set({ connected }),
 
-  setInterviewing: (v) => set({ isInterviewing: v }),
+  setTraining: (v) => set({ isTraining: v }),
 
   clearMessages: () => set({ messages: [] }),
 
@@ -86,7 +86,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         break
 
       case 'interview_complete':
-        set({ isInterviewing: false, currentStage: '' })
+        set({ isTraining: false, currentStage: '' })
         break
 
       case 'upload_result':
@@ -110,8 +110,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           id: nextId(), role: 'system', content: msg.message,
           messageType: 'text', timestamp: now,
         })
-        if (get().isInterviewing) {
-          set({ isInterviewing: false, currentStage: '' })
+        if (get().isTraining) {
+          set({ isTraining: false, currentStage: '' })
         }
         break
     }

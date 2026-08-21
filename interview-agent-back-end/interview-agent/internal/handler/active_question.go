@@ -4,7 +4,7 @@ import "sync"
 
 // activeQuestionRegistry binds the control WebSocket's current question to the
 // authenticated user. ASR connections consult it so stale or cross-session
-// question IDs cannot publish transcripts into a newer interview turn.
+// question IDs cannot publish transcripts into a newer training turn.
 type activeQuestionRegistry struct {
 	mu        sync.RWMutex
 	questions map[string]string

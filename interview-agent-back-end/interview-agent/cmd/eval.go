@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 package main
@@ -66,9 +66,9 @@ func runEval(args []string) {
 // content 存完整题目文本（BM25 索引需要），content_preview 存截断摘要（方便人看）。
 type manifestEntry struct {
 	ID             string   `json:"id"`
-	ContentPreview string   `json:"content_preview"`          // 截断到 80 字符，方便人工标注时快速浏览
-	Content        string   `json:"content"`                  // 完整题目文本（BM25 索引使用）
-	Reference      string   `json:"reference,omitempty"`      // 参考答案
+	ContentPreview string   `json:"content_preview"`     // 截断到 80 字符，方便人工标注时快速浏览
+	Content        string   `json:"content"`             // 完整题目文本（BM25 索引使用）
+	Reference      string   `json:"reference,omitempty"` // 参考答案
 	Topic          string   `json:"topic"`
 	Difficulty     string   `json:"difficulty"`
 	Type           string   `json:"type"`
@@ -503,11 +503,11 @@ func findRelatedEntries(seed manifestEntry, group []manifestEntry) []string {
 		seedSkills[strings.ToLower(strings.TrimSpace(s))] = true
 	}
 
-	type candidate struct {
+	type rankedEntry struct {
 		id      string
 		overlap int
 	}
-	var candidates []candidate
+	var rankedEntries []rankedEntry
 
 	for _, e := range group {
 		if e.ID == seed.ID {
@@ -520,20 +520,20 @@ func findRelatedEntries(seed manifestEntry, group []manifestEntry) []string {
 			}
 		}
 		if overlap >= 2 {
-			candidates = append(candidates, candidate{e.ID, overlap})
+			rankedEntries = append(rankedEntries, rankedEntry{e.ID, overlap})
 		}
 	}
 
 	// 按重叠度降序，取前 2 个
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].overlap > candidates[j].overlap
+	sort.Slice(rankedEntries, func(i, j int) bool {
+		return rankedEntries[i].overlap > rankedEntries[j].overlap
 	})
 	limit := 2
-	if limit > len(candidates) {
-		limit = len(candidates)
+	if limit > len(rankedEntries) {
+		limit = len(rankedEntries)
 	}
 	for i := 0; i < limit; i++ {
-		result = append(result, candidates[i].id)
+		result = append(result, rankedEntries[i].id)
 	}
 
 	return result

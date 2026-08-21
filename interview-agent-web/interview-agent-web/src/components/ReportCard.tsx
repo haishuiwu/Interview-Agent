@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 import { useState } from 'react'
@@ -15,7 +15,7 @@ export function ReportCard({ content }: { content: string }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-blue-100 transition"
       >
-        <span className="font-medium text-blue-800">学生能力训练评估报告</span>
+        <span className="font-medium text-blue-800">学生能力成长报告</span>
         <span className="text-blue-600 text-sm">{expanded ? '收起' : '展开'}</span>
       </button>
       {expanded && (

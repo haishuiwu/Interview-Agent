@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 import { useState } from 'react'
@@ -41,10 +41,10 @@ export function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="w-full max-w-sm p-8 bg-white rounded-2xl shadow-lg">
         <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">
-          师练 AI
+          StudentCoach
         </h1>
         <p className="text-sm text-center text-gray-400 mb-8">
-          学生能力训练与成长助手
+          面向学生能力提升的 AI Growth Agent
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

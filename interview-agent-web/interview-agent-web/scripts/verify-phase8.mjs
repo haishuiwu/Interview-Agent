@@ -5,7 +5,7 @@ const envExample = await readFile(new URL('../../../interview-agent-back-end/int
 const backendReadme = await readFile(new URL('../../../interview-agent-back-end/interview-agent/README.md', import.meta.url), 'utf8')
 const frontendReadme = await readFile(new URL('../README.md', import.meta.url), 'utf8')
 const chatWindow = await readFile(new URL('../src/components/ChatWindow.tsx', import.meta.url), 'utf8')
-const speechHook = await readFile(new URL('../src/hooks/useInterviewSpeech.ts', import.meta.url), 'utf8')
+const speechHook = await readFile(new URL('../src/hooks/useTrainingSpeech.ts', import.meta.url), 'utf8')
 
 assert.match(envExample, /^SPEECH_ENABLED=false$/m, 'Speech must remain globally disabled by default')
 assert.match(envExample, /^WEB_ALLOWED_ORIGINS=http:\/\/localhost:5173$/m, 'The development Origin must be explicit')

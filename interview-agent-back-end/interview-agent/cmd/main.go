@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 package main
@@ -33,7 +33,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== 师练 AI - 教师教学能力训练系统 ===")
+	fmt.Println("=== StudentCoach - Student Ability Growth Agent ===")
 	fmt.Println()
 
 	if len(os.Args) < 2 {
@@ -46,7 +46,7 @@ func main() {
 	case "chat":
 		runChat()
 	case "interview":
-		runInterview()
+		runTrainingCLI()
 	case "load-data":
 		runLoadData()
 	case "web":
@@ -59,7 +59,7 @@ func main() {
 }
 
 // ============================================================
-// chat 命令：统一聊天入口（路由 + 聊天 Agent + 面试 Agent）
+// chat 命令：统一聊天入口（路由 + Chat Agent + StudentCoach）。
 // ============================================================
 
 func runChat() {
@@ -128,7 +128,7 @@ func runChat() {
 	if cfg.GitHub.Token != "" {
 		gs, err := mcp.NewGitHubSearcher(cfg.GitHub.Token)
 		if err != nil {
-			log.Printf("[MCP] GitHub Searcher 启动失败（教学能力提升计划将使用 LLM 生成资源）: %v", err)
+			log.Printf("[MCP] GitHub Searcher 启动失败（能力提升计划将使用 LLM 生成资源）: %v", err)
 		} else {
 			githubSearcher = gs
 			fmt.Println("[MCP] GitHub Searcher 就绪")
@@ -153,9 +153,9 @@ func runChat() {
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Println("系统就绪！你可以：")
-	fmt.Println("  - 交流课程标准、教学设计与课堂管理问题")
-	fmt.Println("  - 说「开始训练」启动教师教学能力训练")
-	fmt.Println("  - 粘贴教师岗位、面试大纲或教学考核标准链接")
+	fmt.Println("  - 交流学习目标、能力发展与成长问题")
+	fmt.Println("  - 说「开始训练」启动学生能力成长训练")
+	fmt.Println("  - 粘贴课程标准、考试大纲或能力要求链接")
 	fmt.Println("  - 输入 quit 退出系统")
 	fmt.Println(strings.Repeat("=", 60))
 
@@ -163,7 +163,7 @@ func runChat() {
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var chatHistory []*schema.Message
-	isInterviewing := false
+	isTraining := false
 
 	for {
 		fmt.Print("\n你: ")
@@ -175,41 +175,41 @@ func runChat() {
 			continue
 		}
 		if strings.ToLower(input) == "quit" || strings.ToLower(input) == "exit" {
-			fmt.Println("\n再见！祝你的教学能力持续进步！")
+			fmt.Println("\n再见！祝你的学习能力持续进步！")
 			break
 		}
 
-		intent := router.Route(input, isInterviewing)
+		intent := router.Route(input, isTraining)
 
 		switch intent {
 		case agent.IntentStartTraining:
-			if !isInterviewing {
-				fmt.Println("\n好的，开始准备本轮教师教学能力训练！")
-				// 收集 JD
-				jdText := collectJD(ctx, chatModel)
-				if jdText == "" {
+			if !isTraining {
+				fmt.Println("\n好的，开始准备本轮学生能力成长训练！")
+				// 收集学习目标与能力标准。
+				abilityStandardText := collectAbilityStandard(ctx, chatModel)
+				if abilityStandardText == "" {
 					fmt.Println("目标标准为空，取消训练。继续聊天吧。")
 					continue
 				}
-				fmt.Printf("\n[目标标准] 已加载，长度: %d 字符\n", len(jdText))
+				fmt.Printf("\n[目标标准] 已加载，长度: %d 字符\n", len(abilityStandardText))
 
-				// 收集简历
-				resumeText := collectResume()
-				if resumeText == "" {
-					fmt.Println("教学档案为空，取消训练。继续聊天吧。")
+				// 收集学生画像。
+				studentProfileText := collectStudentProfile()
+				if studentProfileText == "" {
+					fmt.Println("学生画像为空，取消训练。继续聊天吧。")
 					continue
 				}
-				fmt.Printf("[教学档案] 已加载，长度: %d 字符\n", len(resumeText))
+				fmt.Printf("[学生画像] 已加载，长度: %d 字符\n", len(studentProfileText))
 
-				// 开始面试
+				// 开始训练。
 				fmt.Println("\n" + strings.Repeat("=", 60))
-				fmt.Println("教学能力训练准备中，请稍候...")
+				fmt.Println("学生能力成长训练准备中，请稍候...")
 				fmt.Println(strings.Repeat("=", 60))
 
-				isInterviewing = true
+				isTraining = true
 
-				interviewScanner := bufio.NewScanner(os.Stdin)
-				interviewScanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+				trainingScanner := bufio.NewScanner(os.Stdin)
+				trainingScanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 				callbacks := &graph.TrainingCallbacks{
 					OnStageChange: func(stage string, msg string) {
@@ -217,7 +217,7 @@ func runChat() {
 					},
 					OnQuestion: func(questionNum int, content string) {
 						fmt.Printf("\n%s\n", strings.Repeat("-", 40))
-						fmt.Printf("AI 教研员（第 %d 个训练任务）：\n\n%s\n\n", questionNum, content)
+						fmt.Printf("StudentCoach（第 %d 个训练任务）：\n\n%s\n\n", questionNum, content)
 					},
 					OnScore: func(score *agent.AnswerScore) {
 						fmt.Printf("\n[评分: %.0f/100] %s\n", score.Score, score.Feedback)
@@ -232,7 +232,7 @@ func runChat() {
 					},
 					GetUserAnswer: func() (string, error) {
 						fmt.Print("你的回答（输入 END 结束本题，输入 quit 终止训练）：\n")
-						answer := readMultiLine(interviewScanner)
+						answer := readMultiLine(trainingScanner)
 						trimmed := strings.TrimSpace(strings.ToLower(answer))
 						if trimmed == "quit" || trimmed == "exit" {
 							return "", graph.ErrUserQuit
@@ -241,40 +241,40 @@ func runChat() {
 					},
 				}
 
-				_, err := orchestrator.RunTraining(ctx, jdText, resumeText, "default_user", callbacks)
+				_, err := orchestrator.RunTraining(ctx, abilityStandardText, studentProfileText, "default_user", callbacks)
 				if err != nil {
 					fmt.Printf("\n训练流程出错: %v\n", err)
 				}
 
-				isInterviewing = false
+				isTraining = false
 				fmt.Println("\n本轮训练结束！你可以继续交流，或者说「开始训练」再来一轮。")
 			}
 
 		case agent.IntentUploadAbilityStandard:
-			fmt.Println("\n检测到目标标准链接，开始准备教师训练！")
-			jdText, err := loader.ExtractAbilityStandardFromURL(ctx, input, chatModel)
+			fmt.Println("\n检测到目标标准链接，开始准备学生能力训练！")
+			abilityStandardText, err := loader.ExtractAbilityStandardFromURL(ctx, input, chatModel)
 			if err != nil {
 				fmt.Printf("URL 抓取失败: %v\n请改用文件或手动输入方式，或说「开始训练」手动输入标准。\n", err)
 				continue
 			}
-			fmt.Printf("[目标标准] 已从 URL 加载，长度: %d 字符\n", len(jdText))
+			fmt.Printf("[目标标准] 已从 URL 加载，长度: %d 字符\n", len(abilityStandardText))
 
-			// 收集简历
-			resumeText := collectResume()
-			if resumeText == "" {
-				fmt.Println("教学档案为空，取消训练。继续聊天吧。")
+			// 收集学生画像。
+			studentProfileText := collectStudentProfile()
+			if studentProfileText == "" {
+				fmt.Println("学生画像为空，取消训练。继续聊天吧。")
 				continue
 			}
-			fmt.Printf("[教学档案] 已加载，长度: %d 字符\n", len(resumeText))
+			fmt.Printf("[学生画像] 已加载，长度: %d 字符\n", len(studentProfileText))
 
-			// 开始面试（复用上面的逻辑）
+			// 开始训练（复用上面的逻辑）。
 			fmt.Println("\n" + strings.Repeat("=", 60))
-			fmt.Println("教学能力训练准备中，请稍候...")
+			fmt.Println("学生能力成长训练准备中，请稍候...")
 			fmt.Println(strings.Repeat("=", 60))
 
-			isInterviewing = true
-			interviewScanner := bufio.NewScanner(os.Stdin)
-			interviewScanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+			isTraining = true
+			trainingScanner := bufio.NewScanner(os.Stdin)
+			trainingScanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 			callbacks := &graph.TrainingCallbacks{
 				OnStageChange: func(stage string, msg string) {
@@ -282,7 +282,7 @@ func runChat() {
 				},
 				OnQuestion: func(questionNum int, content string) {
 					fmt.Printf("\n%s\n", strings.Repeat("-", 40))
-					fmt.Printf("AI 教研员（第 %d 个训练任务）：\n\n%s\n\n", questionNum, content)
+					fmt.Printf("StudentCoach（第 %d 个训练任务）：\n\n%s\n\n", questionNum, content)
 				},
 				OnScore: func(score *agent.AnswerScore) {
 					fmt.Printf("\n[评分: %.0f/100] %s\n", score.Score, score.Feedback)
@@ -297,7 +297,7 @@ func runChat() {
 				},
 				GetUserAnswer: func() (string, error) {
 					fmt.Print("你的回答（输入 END 结束本题，输入 quit 终止训练）：\n")
-					answer := readMultiLine(interviewScanner)
+					answer := readMultiLine(trainingScanner)
 					trimmed := strings.TrimSpace(strings.ToLower(answer))
 					if trimmed == "quit" || trimmed == "exit" {
 						return "", graph.ErrUserQuit
@@ -306,11 +306,11 @@ func runChat() {
 				},
 			}
 
-			_, err = orchestrator.RunTraining(ctx, jdText, resumeText, "default_user", callbacks)
+			_, err = orchestrator.RunTraining(ctx, abilityStandardText, studentProfileText, "default_user", callbacks)
 			if err != nil {
 				fmt.Printf("\n训练流程出错: %v\n", err)
 			}
-			isInterviewing = false
+			isTraining = false
 			fmt.Println("\n本轮训练结束！你可以继续交流，或者说「开始训练」再来一轮。")
 
 		case agent.IntentViewHistory:
@@ -331,10 +331,10 @@ func runChat() {
 }
 
 // ============================================================
-// interview 命令：启动完整面试流程（直接模式，跳过聊天）
+// runTrainingCLI 启动完整学生能力训练流程；interview 仅作为历史命令名适配。
 // ============================================================
 
-func runInterview() {
+func runTrainingCLI() {
 	ctx := context.Background()
 
 	// ====== 1. 加载配置 ======
@@ -344,7 +344,7 @@ func runInterview() {
 	}
 	fmt.Printf("模型: %s\n", cfg.LLM.Model)
 
-	// ====== 1.5 初始化 MCP 网页抓取器（用于 URL 方式输入 JD）======
+	// ====== 1.5 初始化 MCP 网页抓取器（用于 URL 方式输入能力标准）======
 	if err := loader.InitWebScraper(); err != nil {
 		log.Printf("[MCP] Playwright 网页抓取器启动失败（URL 抓取不可用，可改用文件输入）: %v", err)
 	} else {
@@ -400,13 +400,13 @@ func runInterview() {
 	loadBuiltInStudentAbilityQuestions(bm25Manager)
 
 	// ====== 8. GitHub MCP（可选） ======
-	var interviewGitHubSearcher *mcp.GitHubSearcher
+	var trainingGitHubSearcher *mcp.GitHubSearcher
 	if cfg.GitHub.Token != "" {
 		gs, err := mcp.NewGitHubSearcher(cfg.GitHub.Token)
 		if err != nil {
 			log.Printf("[MCP] GitHub Searcher 启动失败: %v", err)
 		} else {
-			interviewGitHubSearcher = gs
+			trainingGitHubSearcher = gs
 			fmt.Println("[MCP] GitHub Searcher 就绪")
 		}
 	}
@@ -418,7 +418,7 @@ func runInterview() {
 		MilvusStore:    milvusStore,
 		BM25Manager:    bm25Manager,
 		MySQLStore:     mysqlStore,
-		GitHubSearcher: interviewGitHubSearcher,
+		GitHubSearcher: trainingGitHubSearcher,
 		RerankerType:   cfg.LLM.RerankerType,
 		RerankModel:    cfg.LLM.RerankModel,
 		APIKey:         cfg.LLM.APIKey,
@@ -426,28 +426,28 @@ func runInterview() {
 
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println("所有基础设施就绪，可以开始教师教学能力训练！")
+	fmt.Println("所有基础设施就绪，可以开始学生能力成长训练！")
 	fmt.Println(strings.Repeat("=", 60))
 
-	// ====== 10. 收集 JD ======
-	jdText := collectJD(ctx, chatModel)
-	if jdText == "" {
+	// ====== 10. 收集学习目标与能力标准 ======
+	abilityStandardText := collectAbilityStandard(ctx, chatModel)
+	if abilityStandardText == "" {
 		fmt.Println("目标标准为空，退出")
 		return
 	}
-	fmt.Printf("\n[目标标准] 已加载，长度: %d 字符\n", len(jdText))
+	fmt.Printf("\n[目标标准] 已加载，长度: %d 字符\n", len(abilityStandardText))
 
-	// ====== 10. 收集简历 ======
-	resumeText := collectResume()
-	if resumeText == "" {
-		fmt.Println("教学档案为空，退出")
+	// ====== 10. 收集学生画像 ======
+	studentProfileText := collectStudentProfile()
+	if studentProfileText == "" {
+		fmt.Println("学生画像为空，退出")
 		return
 	}
-	fmt.Printf("[教学档案] 已加载，长度: %d 字符\n", len(resumeText))
+	fmt.Printf("[学生画像] 已加载，长度: %d 字符\n", len(studentProfileText))
 
-	// ====== 11. 开始面试 ======
+	// ====== 11. 开始训练 ======
 	fmt.Println("\n" + strings.Repeat("=", 60))
-	fmt.Println("教学能力训练准备中，请稍候...")
+	fmt.Println("学生能力成长训练准备中，请稍候...")
 	fmt.Println(strings.Repeat("=", 60))
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -459,7 +459,7 @@ func runInterview() {
 		},
 		OnQuestion: func(questionNum int, content string) {
 			fmt.Printf("\n%s\n", strings.Repeat("-", 40))
-			fmt.Printf("AI 教研员（第 %d 个训练任务）：\n\n%s\n\n", questionNum, content)
+			fmt.Printf("StudentCoach（第 %d 个训练任务）：\n\n%s\n\n", questionNum, content)
 		},
 		OnScore: func(score *agent.AnswerScore) {
 			fmt.Printf("\n[评分: %.0f/100] %s\n", score.Score, score.Feedback)
@@ -483,21 +483,21 @@ func runInterview() {
 		},
 	}
 
-	_, err = orchestrator.RunTraining(ctx, jdText, resumeText, "default_user", callbacks)
+	_, err = orchestrator.RunTraining(ctx, abilityStandardText, studentProfileText, "default_user", callbacks)
 	if err != nil {
 		log.Fatalf("训练流程出错: %v", err)
 	}
 
-	fmt.Println("\n感谢使用师练 AI，祝你的教学能力持续进步！")
+	fmt.Println("\n感谢使用 StudentCoach，祝你的学习能力持续进步！")
 }
 
 // ============================================================
-// JD 输入：URL / 文件路径 / 手动输入
+// 学习目标与能力标准输入：URL / 文件路径 / 手动输入。
 // ============================================================
 
-func collectJD(ctx context.Context, chatModel model.ChatModel) string {
+func collectAbilityStandard(ctx context.Context, chatModel model.ChatModel) string {
 	fmt.Println()
-	fmt.Println("请提供教师岗位要求、资格面试大纲或教学能力考核标准：")
+	fmt.Println("请提供学习目标、课程标准、考试大纲或能力要求：")
 	fmt.Println("  1. 粘贴相关页面 URL")
 	fmt.Println("  2. 输入文件路径（如 ./teacher_standard.txt）")
 	fmt.Println("  3. 直接粘贴标准文本（输入 END 结束）")
@@ -550,14 +550,14 @@ func collectJD(ctx context.Context, chatModel model.ChatModel) string {
 }
 
 // ============================================================
-// 简历输入：文件路径 / 手动输入
+// 学生画像输入：文件路径 / 手动输入。
 // ============================================================
 
-func collectResume() string {
+func collectStudentProfile() string {
 	fmt.Println()
-	fmt.Println("请提供学段、学科、授课/实习和教研经历等教学档案：")
+	fmt.Println("请提供学段、学科、学习经历、项目作品和能力基础等学生画像：")
 	fmt.Println("  1. 输入文件路径（如 ./teacher_profile.pdf）")
-	fmt.Println("  2. 直接粘贴教学档案文本（输入 END 结束）")
+	fmt.Println("  2. 直接粘贴学生画像文本（输入 END 结束）")
 	fmt.Print("\n请输入: ")
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -595,7 +595,7 @@ func collectResume() string {
 }
 
 // ============================================================
-// load-data 命令：加载面试题库到 Milvus
+// load-data 命令：加载能力训练题库到 Milvus。
 // ============================================================
 
 func runLoadData() {
@@ -926,19 +926,19 @@ func printUsage() {
 	fmt.Println("用法: interview-agent <command>")
 	fmt.Println()
 	fmt.Println("可用命令:")
-	fmt.Println("  chat              进入 AI 教研聊天模式")
-	fmt.Println("  interview         启动教师教学能力训练（兼容命令名）")
-	fmt.Println("  load-data         （可选）加载内置教师 JSON 题库到 Milvus")
-	fmt.Println("  load-data <file>  加载教师训练题库（支持 PDF/TXT/MD，自动 LLM 解析）")
+	fmt.Println("  chat              进入 StudentCoach 聊天模式")
+	fmt.Println("  interview         启动学生能力成长训练（历史兼容命令名）")
+	fmt.Println("  load-data         （可选）加载内置学生能力训练题库到 Milvus")
+	fmt.Println("  load-data <file>  加载学生能力训练题库（支持 PDF/TXT/MD，自动 LLM 解析）")
 	fmt.Println("  web               启动 Web 服务器（前端 + WebSocket API）")
 	fmt.Println("  eval [flags]      跑 RAG 离线评估（详见 go run cmd/main.go eval -h）")
 	fmt.Println()
 	fmt.Println("目标标准输入方式（interview 兼容命令中）：")
-	fmt.Println("  - URL:   粘贴教师岗位、资格面试大纲或考核标准页面")
+	fmt.Println("  - URL:   粘贴课程标准、考试大纲或能力要求页面")
 	fmt.Println("  - 文件:  支持 .txt / .pdf / .docx / .md 格式")
 	fmt.Println("  - 手动:  直接粘贴文本，输入 END 结束")
 	fmt.Println()
-	fmt.Println("教学档案输入方式：")
+	fmt.Println("学生画像输入方式：")
 	fmt.Println("  - 文件:  支持 .pdf / .docx / .txt 格式")
 	fmt.Println("  - 手动:  直接粘贴文本，输入 END 结束")
 	fmt.Println()

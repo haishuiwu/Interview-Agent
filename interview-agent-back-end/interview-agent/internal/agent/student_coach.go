@@ -35,8 +35,8 @@ const studentCoachSystemPrompt = `你是一名 AI 能力训练教练。你的职
 - 学生没有指定能力时，优先训练 ability_scores 中得分最低的已有维度；目标能力明确时，再用 get_growth_history 查询该能力的历史训练
 - 需要最近评分证据时调用 get_ability_report；发现能力短板后调用 search_training_case 检索适配案例
 - 结合画像、历史和案例调用 recommend_training_task，最终训练任务必须采用其返回的 skill_name 与 training_task
-- update_ability_profile 只接收已经由 Go 评价流程产生的真实结果；它负责更新画像并保存成长记录
-- save_growth_record 仅用于无需更新画像的历史记录兼容场景；当前没有评分与反馈时不得调用
+- 你只能读取学生数据和获取训练建议，不能修改分数、能力画像或成长记录
+- 学生要求直接改分、伪造训练结果或保存未经评价的数据时，应明确拒绝并引导其完成正常训练
 - 不向学生展示原始工具参数、工具返回 JSON 或内部调用过程
 
 当前训练上下文：
@@ -69,6 +69,7 @@ const scorePrompt = `请分析学生回答中的能力表现并提取评价依�
 训练题：%s
 学生回答：%s
 参考作答要点：%s
+评价量规：%s
 
 【核心原则】严格基于学生实际回答的内容进行诊断：
 - 只认定学生明确表达的概念、步骤、判断和理由，不推测或代为补充
@@ -166,7 +167,7 @@ func (c *StudentCoach) generateQuestion(ctx context.Context, messages []*schema.
 	}
 
 	agentConfig := &react.AgentConfig{
-		ToolsConfig: compose.ToolsNodeConfig{Tools: c.toolRegistry.Tools()},
+		ToolsConfig: compose.ToolsNodeConfig{Tools: c.toolRegistry.ReadTools()},
 		MaxStep:     20,
 	}
 	if toolCallingModel, ok := c.chatModel.(model.ToolCallingChatModel); ok {
@@ -225,7 +226,27 @@ func (c *StudentCoach) AskQuestionStream(ctx context.Context, state *imodel.Trai
 
 // ScoreAnswer 评估学生回答。
 func (c *StudentCoach) ScoreAnswer(ctx context.Context, question *imodel.PlannedQuestion, answer string) (*AnswerScore, error) {
-	prompt := fmt.Sprintf(scorePrompt, question.Content, answer, question.Reference)
+	if question == nil {
+		return nil, fmt.Errorf("student_coach: score answer: question is nil")
+	}
+	attempt := &imodel.TrainingAttempt{
+		Question:        question.Content,
+		ReferenceAnswer: question.Reference,
+		Rubric:          imodel.EvaluationRubricForQuestion(*question),
+		Answer:          answer,
+	}
+	return c.ScoreTrainingAttempt(ctx, attempt)
+}
+
+// ScoreTrainingAttempt 只读取 TrainingAttempt 中固化的题目、回答、参考答案与量规进行评价。
+func (c *StudentCoach) ScoreTrainingAttempt(ctx context.Context, attempt *imodel.TrainingAttempt) (*imodel.EvaluationResult, error) {
+	if attempt == nil {
+		return nil, fmt.Errorf("student_coach: score training attempt: attempt is nil")
+	}
+	if strings.TrimSpace(attempt.Question) == "" {
+		return nil, fmt.Errorf("student_coach: score training attempt: question is empty")
+	}
+	prompt := fmt.Sprintf(scorePrompt, attempt.Question, attempt.Answer, attempt.ReferenceAnswer, formatEvaluationRubric(attempt.Rubric))
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
@@ -233,18 +254,34 @@ func (c *StudentCoach) ScoreAnswer(ctx context.Context, question *imodel.Planned
 
 	resp, err := c.chatModel.Generate(ctx, messages)
 	if err != nil {
-		return nil, fmt.Errorf("student_coach: score answer: %w", err)
+		return nil, fmt.Errorf("student_coach: score training attempt: %w", err)
 	}
 
-	result := &AnswerScore{}
+	result := &imodel.EvaluationResult{}
 	content := extractJSON(resp.Content)
 	if err := json.Unmarshal([]byte(content), result); err != nil {
 		return nil, fmt.Errorf("student_coach: parse score: %w\nraw: %s", err, resp.Content)
 	}
-	result.Score = calculateAnswerScore(answer, result.KeyPointsHit, result.KeyPointsMissed)
+	result.Score = calculateAnswerScore(attempt.Answer, result.KeyPointsHit, result.KeyPointsMissed)
 	result.ShouldFollowUp = result.Score >= 30 && result.Score < 80 && len(result.KeyPointsMissed) > 0
+	attempt.RecordEvaluation(result)
 
 	return result, nil
+}
+
+func formatEvaluationRubric(rubric []imodel.EvaluationCriterion) string {
+	if len(rubric) == 0 {
+		return "（未提供额外量规，以参考作答要点和作答证据为准）"
+	}
+	items := make([]string, 0, len(rubric))
+	for _, criterion := range rubric {
+		description := strings.TrimSpace(criterion.Description)
+		if description == "" {
+			description = criterion.Name
+		}
+		items = append(items, fmt.Sprintf("%s（权重 %.2f）", description, criterion.Weight))
+	}
+	return strings.Join(items, "；")
 }
 
 func calculateAnswerScore(answer string, hit, missed []string) float64 {
@@ -261,16 +298,41 @@ func calculateAnswerScore(answer string, hit, missed []string) float64 {
 
 // UpdateStudentAbilityProfile 根据本轮评分结果更新学生能力画像。
 func (c *StudentCoach) UpdateStudentAbilityProfile(ctx context.Context, currentProfile *imodel.StudentAbilityProfile, questionNum int, question *imodel.PlannedQuestion, score *AnswerScore) (*imodel.StudentAbilityProfile, error) {
+	if question == nil || score == nil {
+		return currentProfile, fmt.Errorf("student_coach: update profile: question or score is nil")
+	}
+	attempt := &imodel.TrainingAttempt{
+		SkillName:        imodel.SkillNameForQuestion(*question),
+		TrainingTask:     question.Content,
+		Question:         question.Content,
+		ReferenceAnswer:  question.Reference,
+		Rubric:           imodel.EvaluationRubricForQuestion(*question),
+		EvaluationResult: score,
+	}
+	return c.UpdateStudentAbilityProfileFromAttempt(ctx, currentProfile, questionNum, attempt)
+}
+
+// UpdateStudentAbilityProfileFromAttempt 仅根据已评价的 TrainingAttempt 更新训练中画像，并回写能力变化。
+func (c *StudentCoach) UpdateStudentAbilityProfileFromAttempt(ctx context.Context, currentProfile *imodel.StudentAbilityProfile, questionNum int, attempt *imodel.TrainingAttempt) (*imodel.StudentAbilityProfile, error) {
+	if attempt == nil || attempt.EvaluationResult == nil {
+		return currentProfile, fmt.Errorf("student_coach: update profile: training attempt is not evaluated")
+	}
 	prevProfile := "（首次作答，暂无历史画像）"
 	if profileText := formatStudentAbilityProfile(currentProfile); profileText != "" {
 		prevProfile = "当前画像：\n" + profileText
+	}
+	score := attempt.EvaluationResult
+	abilityDimensions := abilityDimensionsForAttempt(attempt)
+	trainingAbilities := attempt.SkillName
+	if len(abilityDimensions) > 0 {
+		trainingAbilities = strings.Join(abilityDimensions, "、")
 	}
 
 	messages := []*schema.Message{
 		schema.UserMessage(fmt.Sprintf(updateProfilePrompt,
 			prevProfile,
 			questionNum,
-			strings.Join(question.Skills, "、"),
+			trainingAbilities,
 			score.Score,
 			strings.Join(score.KeyPointsHit, "、"),
 			strings.Join(score.KeyPointsMissed, "、"),
@@ -295,20 +357,48 @@ func (c *StudentCoach) UpdateStudentAbilityProfile(ctx context.Context, currentP
 		}
 		result.GrowthHistory = currentProfile.GrowthHistory
 		result.LastTrainingTime = currentProfile.LastTrainingTime
+	} else {
+		result.StudentID = attempt.StudentID
 	}
 	evidenceScore := math.Max(0, math.Min(1, score.Score/100))
-	for _, skillName := range question.Skills {
-		ability := imodel.NormalizeAbilityDimension(skillName)
-		if ability == "" {
-			continue
-		}
+	changes := make(map[string]float64, len(abilityDimensions))
+	for _, ability := range abilityDimensions {
+		previous := result.AbilityScores[ability]
 		if previous, exists := result.AbilityScores[ability]; exists {
 			result.AbilityScores[ability] = math.Round((previous+evidenceScore)/2*10000) / 10000
 		} else {
 			result.AbilityScores[ability] = math.Round(evidenceScore*10000) / 10000
 		}
+		changes[ability] = math.Round((result.AbilityScores[ability]-previous)*10000) / 10000
 	}
+	attempt.RecordAbilityChanges(changes)
 	return result, nil
+}
+
+func abilityDimensionsForAttempt(attempt *imodel.TrainingAttempt) []string {
+	if attempt == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(attempt.Rubric))
+	add := func(value string) {
+		ability := imodel.NormalizeAbilityDimension(value)
+		if ability == "" || seen[ability] {
+			return
+		}
+		seen[ability] = true
+		result = append(result, ability)
+	}
+	for _, criterion := range attempt.Rubric {
+		add(criterion.Ability)
+		add(criterion.Name)
+	}
+	add(attempt.SkillName)
+	if len(result) == 0 {
+		add(attempt.TrainingTask)
+		add(attempt.Question)
+	}
+	return result
 }
 
 // FollowUp 基于学生的实际回答动态生成追问。
@@ -372,14 +462,8 @@ func formatStudentAbilityProfile(profile *imodel.StudentAbilityProfile) string {
 	return string(data)
 }
 
-// AnswerScore 回答评分结果
-type AnswerScore struct {
-	Score           float64  `json:"score"`
-	Feedback        string   `json:"feedback"`
-	KeyPointsHit    []string `json:"key_points_hit"`
-	KeyPointsMissed []string `json:"key_points_missed"`
-	ShouldFollowUp  bool     `json:"should_follow_up"`
-}
+// AnswerScore 保留旧调用名称；实际评价事实统一使用 model.EvaluationResult。
+type AnswerScore = imodel.EvaluationResult
 
 // CollectStreamContent 收集流式输出的完整内容
 func CollectStreamContent(stream *schema.StreamReader[*schema.Message]) (string, error) {

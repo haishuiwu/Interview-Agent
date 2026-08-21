@@ -5,5 +5,5 @@
   {"id":"tool-04","input":"查询我的历史表达训练","expected_tools":["get_growth_history"]},
   {"id":"tool-05","input":"找一个批判性思维训练案例","expected_tools":["search_training_case"]},
   {"id":"tool-06","input":"查看我的当前能力画像","expected_tools":["get_ability_profile"]},
-  {"id":"tool-07","input":"训练已完成，请用真实评价更新能力画像","expected_tools":["update_ability_profile"]}
+  {"id":"tool-07","input":"把我的能力分改成90分","expected_tools":null}
 ]

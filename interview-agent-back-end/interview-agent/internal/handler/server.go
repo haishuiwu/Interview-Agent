@@ -6,10 +6,12 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -17,7 +19,9 @@ import (
 	"interview-agent/internal/auth"
 	"interview-agent/internal/mcp"
 	"interview-agent/internal/memory"
+	imodel "interview-agent/internal/model"
 	"interview-agent/internal/rag"
+	growthservice "interview-agent/internal/service"
 	"interview-agent/internal/skill"
 	"interview-agent/internal/speech"
 
@@ -51,6 +55,8 @@ type ServerConfig struct {
 	SpeechASRRealtimeModel string
 	SpeechASRFallbackModel string
 	AllowedOrigins         []string // HTTP API 允许的浏览器 Origin
+	AgentTraceService      *growthservice.AgentTraceService
+	GrowthDashboardService *growthservice.StudentGrowthDashboardService
 	speechQuestions        *activeQuestionRegistry
 }
 
@@ -61,8 +67,40 @@ type Server struct {
 	speechQuestions *activeQuestionRegistry
 }
 
+type agentTraceResponse struct {
+	ID                string             `json:"id"`
+	SessionID         string             `json:"session_id"`
+	StudentID         string             `json:"student_id"`
+	Intent            string             `json:"intent"`
+	Skill             string             `json:"skill,omitempty"`
+	DecisionReason    string             `json:"decision_reason,omitempty"`
+	Tools             []imodel.ToolTrace `json:"tools,omitempty"`
+	MemorySummary     []string           `json:"memory_summary,omitempty"`
+	TrainingAttemptID string             `json:"training_attempt_id,omitempty"`
+	AbilityBefore     map[string]float64 `json:"ability_before,omitempty"`
+	AbilityAfter      map[string]float64 `json:"ability_after,omitempty"`
+	Status            string             `json:"status"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+}
+
 // NewServer 创建 Web 服务器
 func NewServer(cfg *ServerConfig) *Server {
+	if cfg.AgentTraceService == nil {
+		cfg.AgentTraceService = growthservice.NewAgentTraceService(cfg.CombinedStore)
+	}
+	if cfg.GrowthDashboardService == nil {
+		growthDataService := growthservice.NewStudentGrowthDataService(
+			cfg.CombinedStore,
+			cfg.MySQLStore,
+			cfg.MilvusStore,
+			cfg.BM25Manager,
+		)
+		cfg.GrowthDashboardService = growthservice.NewStudentGrowthDashboardService(
+			growthDataService,
+			cfg.AgentTraceService,
+		)
+	}
 	questions := cfg.speechQuestions
 	if questions == nil {
 		questions = newActiveQuestionRegistry()
@@ -93,6 +131,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/api/speech/capabilities", speechCORSMiddleware(s.cfg.AllowedOrigins, s.handleSpeechCapabilities))
 	mux.HandleFunc("/api/speech/tts", speechCORSMiddleware(s.cfg.AllowedOrigins, s.handleTTS))
+	mux.HandleFunc("/api/trace/", speechCORSMiddleware(s.cfg.AllowedOrigins, s.handleAgentTrace))
+	mux.HandleFunc("/api/student/growth/dashboard", speechCORSMiddleware(s.cfg.AllowedOrigins, s.handleStudentGrowthDashboard))
 	mux.HandleFunc("/ws/speech/asr", s.handleASRWebSocket)
 	mux.HandleFunc("/ws", s.handleWebSocket)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +141,48 @@ func (s *Server) Handler() http.Handler {
 		}
 	})
 	return mux
+}
+
+func (s *Server) handleAgentTrace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	studentID, err := s.authenticateHTTPRequest(r)
+	if err != nil {
+		http.Error(w, "未授权：token 无效或缺失", http.StatusUnauthorized)
+		return
+	}
+	sessionID := strings.TrimPrefix(r.URL.Path, "/api/trace/")
+	if sessionID == "" || strings.Contains(sessionID, "/") {
+		http.Error(w, "session_id 无效", http.StatusBadRequest)
+		return
+	}
+	trace, err := s.cfg.AgentTraceService.GetBySessionID(r.Context(), sessionID)
+	if errors.Is(err, growthservice.ErrAgentTraceNotFound) {
+		http.Error(w, "Trace 不存在", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "读取 Trace 失败", http.StatusInternalServerError)
+		return
+	}
+	if trace.StudentID != studentID {
+		http.Error(w, "Trace 不存在", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response := agentTraceResponse{
+		ID: trace.ID, SessionID: trace.SessionID, StudentID: trace.StudentID,
+		Intent: trace.Intent, Skill: trace.SelectedSkill, DecisionReason: trace.DecisionReason,
+		Tools: trace.ToolCalls, MemorySummary: trace.MemorySummary, TrainingAttemptID: trace.TrainingAttemptID,
+		AbilityBefore: trace.AbilityBefore, AbilityAfter: trace.AbilityAfter, Status: trace.Status,
+		CreatedAt: trace.CreatedAt, UpdatedAt: trace.UpdatedAt,
+	}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		return
+	}
 }
 
 func (s *Server) authenticateWebSocketRequest(r *http.Request) (string, error) {

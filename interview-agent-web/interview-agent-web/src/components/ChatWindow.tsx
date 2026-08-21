@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -9,7 +9,7 @@ import { FileUpload } from './FileUpload'
 import { StageIndicator } from './StageIndicator'
 import { useChatStore } from '../store/chatStore'
 import { useAuthStore } from '../store/authStore'
-import { useInterviewSpeech } from '../hooks/useInterviewSpeech'
+import { useTrainingSpeech } from '../hooks/useTrainingSpeech'
 import type { WSClient } from '../api/ws'
 import type { ClientMessage } from '../types/message'
 
@@ -33,7 +33,7 @@ function RecordingTimer({ startedAt }: { startedAt: number }) {
 }
 
 export function ChatWindow({ wsRef }: ChatWindowProps) {
-  const { messages, isInterviewing, connected } = useChatStore()
+  const { messages, isTraining, connected } = useChatStore()
   const token = useAuthStore((state) => state.token)
   const [input, setInput] = useState('')
   const inputValueRef = useRef('')
@@ -83,7 +83,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
     startRecording,
     stopRecording,
     cancelRecording,
-  } = useInterviewSpeech(token, { onDraftReady: handleDraftReady })
+  } = useTrainingSpeech(token, { onDraftReady: handleDraftReady })
   const [attachedFile, setAttachedFile] = useState<{ name: string; data: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showTrainingSetup, setShowTrainingSetup] = useState(false)
@@ -110,11 +110,11 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
   }, [currentQuestion, speakQuestion, speechAvailable])
 
   useEffect(() => {
-    if (!isInterviewing || !connected) {
+    if (!isTraining || !connected) {
       skipSpeaking()
       cancelRecording()
     }
-  }, [cancelRecording, connected, isInterviewing, skipSpeaking])
+  }, [cancelRecording, connected, isTraining, skipSpeaking])
 
   const send = (msg: ClientMessage) => {
     wsRef.current?.send(msg)
@@ -136,7 +136,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
     const text = input.trim()
     if (!text && !attachedFile) return
 
-    if (isInterviewing) {
+    if (isTraining) {
       cancelRecording()
       send({ type: 'answer', content: text })
       setSubmittedQuestionId(currentQuestion?.questionId || null)
@@ -205,7 +205,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
     if (speechEnabled) void unlockAudio().catch(() => undefined)
     setSubmittedQuestionId(null)
     send({ type: 'start_training', learning_goal: learningGoal, student_profile: studentProfile })
-    useChatStore.getState().setInterviewing(true)
+    useChatStore.getState().setTraining(true)
     useChatStore.getState().addMessage({
       id: String(Date.now()),
       role: 'user',
@@ -234,7 +234,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
       <div className="flex-1 overflow-y-auto px-4 py-6">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <p className="text-lg mb-2">师练 AI</p>
+            <p className="text-lg mb-2">StudentCoach</p>
             <p className="text-sm">围绕学习目标、学生画像与能力标准开展个性化训练</p>
           </div>
         )}
@@ -273,7 +273,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
               <textarea
                 value={studentProfileText}
                 onChange={(e) => setStudentProfileText(e.target.value)}
-                placeholder="请填写学段、学科、授课/实习经历、试讲或教研经历；暂无经历可写‘师范生，尚无正式授课经历’。"
+                placeholder="请填写学段、学科、学习经历、项目作品和希望提升的能力；暂无经历时可说明当前学习基础。"
                 rows={4}
                 className="mt-2 w-full border rounded-lg p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -289,8 +289,8 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
               />
               启用语音训练（
               {ttsAvailable && asrAvailable
-                ? 'AI 教研员朗读任务，并可使用语音作答'
-                : ttsAvailable ? 'AI 教研员将朗读任务' : '可使用语音作答'}
+                ? 'StudentCoach 朗读任务，并可使用语音作答'
+                : ttsAvailable ? 'StudentCoach 将朗读任务' : '可使用语音作答'}
               ）
             </label>
           )}
@@ -314,7 +314,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
 
       {/* 输入区 */}
       <div className="border-t px-4 py-3">
-        {isInterviewing && speechAvailable && (
+        {isTraining && speechAvailable && (
           <div className="mb-2 flex items-center gap-2 text-xs text-gray-600" aria-live="polite">
             <button
               type="button"
@@ -324,8 +324,8 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
             >
               {speechEnabled ? '语音已开启' : '语音已关闭'}
             </button>
-            {speechState.kind === 'synthesizing' && <span>正在生成教研员语音…</span>}
-            {speechState.kind === 'speaking' && <span>AI 教研员正在提问…</span>}
+            {speechState.kind === 'synthesizing' && <span>正在生成 StudentCoach 语音…</span>}
+            {speechState.kind === 'speaking' && <span>StudentCoach 正在提问…</span>}
             {speechState.kind === 'requesting_mic' && <span>正在请求麦克风权限…</span>}
             {speechState.kind === 'connecting_asr' && (
               <span>{speechState.degraded ? '实时识别不可用，将在录音结束后识别' : '正在连接语音识别服务…'}</span>
@@ -423,7 +423,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
           </div>
         )}
         <div className="flex items-end gap-2">
-          {!isInterviewing && (
+          {!isTraining && (
             <>
               <button
                 onClick={() => setShowTrainingSetup(!showTrainingSetup)}
@@ -457,7 +457,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
               </div>
             </>
           )}
-          {isInterviewing && (
+          {isTraining && (
             <button
               onClick={handleQuitTraining}
               className="px-3 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 whitespace-nowrap"
@@ -465,7 +465,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
               终止训练
             </button>
           )}
-          {isInterviewing
+          {isTraining
             && speechEnabled
             && asrAvailable
             && currentQuestion?.questionId
@@ -524,7 +524,7 @@ export function ChatWindow({ wsRef }: ChatWindowProps) {
               setInput(e.target.value)
             }}
             onKeyDown={handleKeyDown}
-            placeholder={isInterviewing ? '说明你的判断、解题步骤和依据...' : '咨询学习问题，或点击“开始训练”进入完整训练...'}
+            placeholder={isTraining ? '说明你的判断、解题步骤和依据...' : '咨询学习问题，或点击“开始训练”进入完整训练...'}
             rows={1}
             className="flex-1 border rounded-xl px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
           />

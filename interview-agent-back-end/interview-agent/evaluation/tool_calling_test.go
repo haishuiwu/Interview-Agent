@@ -69,8 +69,6 @@ func TestToolCallingBenchmark(t *testing.T) {
 
 func mockToolPlan(input string) []mockToolCall {
 	switch {
-	case strings.Contains(input, "训练已完成"):
-		return []mockToolCall{{name: "update_ability_profile", arguments: `{"session_id":"benchmark-update","learning_goal":"能力训练","overall_score":75,"ability_scores":{"communication":75},"strengths":["观点明确"],"weaknesses":["结构仍需加强"],"summary":"基于真实训练评价更新"}`}}
 	case strings.Contains(input, "提升自己的表达能力"):
 		return []mockToolCall{
 			{name: "get_ability_profile", arguments: `{}`},

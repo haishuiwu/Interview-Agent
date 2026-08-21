@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 const speechTypes = await readFile(new URL('../src/types/speech.ts', import.meta.url), 'utf8')
 const asrClient = await readFile(new URL('../src/api/speech.ts', import.meta.url), 'utf8')
-const speechHook = await readFile(new URL('../src/hooks/useInterviewSpeech.ts', import.meta.url), 'utf8')
+const speechHook = await readFile(new URL('../src/hooks/useTrainingSpeech.ts', import.meta.url), 'utf8')
 const chatWindow = await readFile(new URL('../src/components/ChatWindow.tsx', import.meta.url), 'utf8')
 
 for (const source of [asrClient, speechHook, chatWindow]) {

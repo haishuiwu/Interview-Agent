@@ -1,6 +1,6 @@
 /**
  * @author: 公众号：IT杨秀才
- * @doc:后端，AI Agent知识进阶，后端、AI大模型、场景题面试大全：https://golangstar.cn/
+ * @doc:StudentCoach - Student Ability Growth Agent
  */
 
 package agent
@@ -57,21 +57,40 @@ func NewAbilityEvaluator(chatModel model.ChatModel) *AbilityEvaluator {
 func (e *AbilityEvaluator) Evaluate(ctx context.Context, state *imodel.TrainingState, standard *imodel.AbilityStandard, profile *imodel.StudentProfile, userTerminated bool) (*imodel.EvaluationReport, error) {
 	// 构建训练过程摘要
 	var qaText string
-	for i, qa := range state.QAHistory {
-		qaText += fmt.Sprintf("### 第 %d 题（%s / %s）\n", i+1, qa.Question.Type, qa.Question.Difficulty)
-		qaText += fmt.Sprintf("**题目**：%s\n", qa.Question.Content)
-		qaText += fmt.Sprintf("**回答**：%s\n", qa.UserAnswer)
-		qaText += fmt.Sprintf("**即时得分**：%.0f\n\n", qa.Score)
+	evaluatedAttempts := evaluatedTrainingAttempts(state, true)
+	if len(evaluatedAttempts) > 0 {
+		for i, attempt := range evaluatedAttempts {
+			attemptLabel := "主任务"
+			if attempt.ParentAttemptID != "" || attempt.AttemptType == imodel.TrainingAttemptTypeFollowUp {
+				attemptLabel = "追问"
+			}
+			qaText += fmt.Sprintf("### 第 %d 次作答（%s / %s）\n", i+1, attemptLabel, attempt.SkillName)
+			qaText += fmt.Sprintf("**训练任务**：%s\n", attempt.TrainingTask)
+			qaText += fmt.Sprintf("**实际题目**：%s\n", attempt.Question)
+			qaText += fmt.Sprintf("**回答**：%s\n", attempt.Answer)
+			qaText += fmt.Sprintf("**即时得分**：%.0f\n\n", attempt.EvaluationResult.Score)
+		}
+	} else {
+		for i, qa := range state.QAHistory {
+			qaText += fmt.Sprintf("### 第 %d 题（%s / %s）\n", i+1, qa.Question.Type, qa.Question.Difficulty)
+			qaText += fmt.Sprintf("**题目**：%s\n", qa.Question.Content)
+			qaText += fmt.Sprintf("**回答**：%s\n", qa.UserAnswer)
+			qaText += fmt.Sprintf("**即时得分**：%.0f\n\n", qa.Score)
+		}
+	}
+	completedCount := completedPrimaryAttemptCount(state)
+	if completedCount == 0 {
+		completedCount = len(state.QAHistory)
 	}
 
 	terminatedNote := ""
 	if userTerminated {
 		terminatedNote = fmt.Sprintf("\n\n> **注意：本次训练由学生主动终止。原计划 %d 道题，实际完成 %d 道题。请在综合评语中说明训练未完成，诊断仅基于已作答内容。**\n",
-			state.TotalQuestions, len(state.QAHistory))
+			state.TotalQuestions, completedCount)
 	}
 
 	userMsg := fmt.Sprintf("## 训练信息\n- 学习目标：%s\n- 学生：%s\n- 年级：%s\n- 学科：%s\n- 计划题目数：%d\n- 实际完成：%d\n- 训练状态：%s%s\n\n## 训练过程\n\n%s",
-		standard.LearningGoal, profile.Name, profile.Grade, profile.Subject, state.TotalQuestions, len(state.QAHistory),
+		standard.LearningGoal, profile.Name, profile.Grade, profile.Subject, state.TotalQuestions, completedCount,
 		func() string {
 			if userTerminated {
 				return "学生主动终止"
@@ -104,14 +123,8 @@ func (e *AbilityEvaluator) Evaluate(ctx context.Context, state *imodel.TrainingS
 	result.TrainingMetrics = calculateTrainingMetrics(state)
 	result.AbilityScores, result.OverallScore = calculateFinalAbilityScores(state)
 	result.OverallLevel = abilityLevel(result.OverallScore)
-	for i := range result.DetailedReview {
-		if i >= len(state.QAHistory) {
-			break
-		}
-		result.DetailedReview[i].QuestionContent = state.QAHistory[i].Question.Content
-		result.DetailedReview[i].UserAnswer = state.QAHistory[i].UserAnswer
-		result.DetailedReview[i].Score = state.QAHistory[i].Score
-	}
+	result.DetailedReview = authoritativeQuestionReviews(result.DetailedReview, state)
+	result.TrainingAttempts = append([]*imodel.TrainingAttempt(nil), state.TrainingAttempts...)
 	result.CreatedAt = time.Now()
 
 	return result, nil
@@ -119,6 +132,28 @@ func (e *AbilityEvaluator) Evaluate(ctx context.Context, state *imodel.TrainingS
 
 // calculateFinalAbilityScores 只基于已记录的逐题事实计算最终分数，不采纳 LLM 输出的分数。
 func calculateFinalAbilityScores(state *imodel.TrainingState) (map[string]float64, float64) {
+	attempts := evaluatedTrainingAttempts(state, false)
+	if len(attempts) > 0 {
+		totals := make(map[string]float64)
+		counts := make(map[string]int)
+		var overallTotal float64
+		for _, attempt := range attempts {
+			score := math.Max(0, math.Min(100, attempt.EvaluationResult.Score))
+			overallTotal += score
+			abilities := abilityDimensionsForAttempt(attempt)
+			if len(abilities) == 0 {
+				abilities = []string{imodel.AbilityProblemSolving}
+			}
+			for _, ability := range abilities {
+				totals[ability] += score
+				counts[ability]++
+			}
+		}
+		result := averageAbilityScores(totals, counts)
+		overall := math.Round(overallTotal/float64(len(attempts))*100) / 100
+		return result, overall
+	}
+
 	totals := make(map[string]float64)
 	counts := make(map[string]int)
 	var overallTotal float64
@@ -132,15 +167,79 @@ func calculateFinalAbilityScores(state *imodel.TrainingState) (map[string]float6
 		}
 	}
 
-	result := make(map[string]float64, len(totals))
-	for ability, total := range totals {
-		result[ability] = math.Round(total/float64(counts[ability])*100) / 100
-	}
+	result := averageAbilityScores(totals, counts)
 	if len(state.QAHistory) == 0 {
 		return result, 0
 	}
 	overall := math.Round(overallTotal/float64(len(state.QAHistory))*100) / 100
 	return result, overall
+}
+
+func averageAbilityScores(totals map[string]float64, counts map[string]int) map[string]float64 {
+	result := make(map[string]float64, len(totals))
+	for ability, total := range totals {
+		result[ability] = math.Round(total/float64(counts[ability])*100) / 100
+	}
+	return result
+}
+
+func evaluatedTrainingAttempts(state *imodel.TrainingState, includeFollowUps bool) []*imodel.TrainingAttempt {
+	if state == nil {
+		return nil
+	}
+	result := make([]*imodel.TrainingAttempt, 0, len(state.TrainingAttempts))
+	for _, attempt := range state.TrainingAttempts {
+		if attempt == nil || attempt.EvaluationResult == nil {
+			continue
+		}
+		if !includeFollowUps && (attempt.ParentAttemptID != "" || attempt.AttemptType == imodel.TrainingAttemptTypeFollowUp) {
+			continue
+		}
+		result = append(result, attempt)
+	}
+	return result
+}
+
+func completedPrimaryAttemptCount(state *imodel.TrainingState) int {
+	return len(evaluatedTrainingAttempts(state, false))
+}
+
+func authoritativeQuestionReviews(generated []imodel.QuestionReview, state *imodel.TrainingState) []imodel.QuestionReview {
+	attempts := evaluatedTrainingAttempts(state, true)
+	if len(attempts) > 0 {
+		result := make([]imodel.QuestionReview, len(attempts))
+		for i, attempt := range attempts {
+			if i < len(generated) {
+				result[i] = generated[i]
+			}
+			evaluation := attempt.EvaluationResult
+			result[i].AttemptID = attempt.ID
+			result[i].QuestionContent = attempt.Question
+			result[i].UserAnswer = attempt.Answer
+			result[i].Score = evaluation.Score
+			result[i].KeyPointsHit = append([]string(nil), evaluation.KeyPointsHit...)
+			result[i].KeyPointsMissed = append([]string(nil), evaluation.KeyPointsMissed...)
+			if strings.TrimSpace(result[i].Comment) == "" {
+				result[i].Comment = evaluation.Feedback
+			}
+		}
+		return result
+	}
+
+	result := make([]imodel.QuestionReview, len(state.QAHistory))
+	for i, qa := range state.QAHistory {
+		if i < len(generated) {
+			result[i] = generated[i]
+		}
+		result[i].AttemptID = qa.AttemptID
+		result[i].QuestionContent = qa.Question.Content
+		result[i].UserAnswer = qa.UserAnswer
+		result[i].Score = qa.Score
+		if strings.TrimSpace(result[i].Comment) == "" {
+			result[i].Comment = qa.Feedback
+		}
+	}
+	return result
 }
 
 func abilitiesForQuestion(question imodel.PlannedQuestion) []string {

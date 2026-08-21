@@ -100,7 +100,7 @@ func (c *RealtimeASRClient) Start(
 	endpoint.RawQuery = query.Encode()
 	headers := http.Header{
 		"Authorization": []string{"Bearer " + c.apiKey},
-		"User-Agent":    []string{"InterviewAgent-Go/1.0"},
+		"User-Agent":    []string{"StudentCoach-Go/1.0"},
 	}
 	conn, response, err := c.dialer.DialContext(connectCtx, endpoint.String(), headers)
 	if response != nil && response.Body != nil {

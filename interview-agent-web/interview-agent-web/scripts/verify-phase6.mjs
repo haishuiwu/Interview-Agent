@@ -4,7 +4,7 @@ import vm from 'node:vm'
 
 const workletSource = await readFile(new URL('../public/pcm-worklet.js', import.meta.url), 'utf8')
 const asrClientSource = await readFile(new URL('../src/api/speech.ts', import.meta.url), 'utf8')
-const speechHookSource = await readFile(new URL('../src/hooks/useInterviewSpeech.ts', import.meta.url), 'utf8')
+const speechHookSource = await readFile(new URL('../src/hooks/useTrainingSpeech.ts', import.meta.url), 'utf8')
 const chatWindowSource = await readFile(new URL('../src/components/ChatWindow.tsx', import.meta.url), 'utf8')
 
 assert.doesNotMatch(workletSource, /\b(?:fetch|WebSocket|XMLHttpRequest)\b/, 'Worklet must not access the network')
@@ -43,7 +43,7 @@ function runWorklet(sourceRate) {
     Math,
     sampleRate: sourceRate,
     registerProcessor(name, constructor) {
-      assert.equal(name, 'interview-pcm-capture')
+      assert.equal(name, 'training-pcm-capture')
       Processor = constructor
     },
   }, { filename: 'pcm-worklet.js' })
